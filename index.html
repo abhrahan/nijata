@@ -1,0 +1,2123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0B0A16">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="mobile-web-app-capable" content="yes">
+<title>Nijata — the fine print, decoded</title>
+<meta name="description" content="Nijata instantly analyzes privacy policies and terms &amp; conditions, so individuals, teams, and businesses can spot data-sharing risks, hidden fees, and red flags before they sign — no upload, 100% on-device, no account needed.">
+<meta name="keywords" content="privacy policy analyzer, terms and conditions summarizer, terms of service checker, contract risk analysis, vendor contract review, SaaS agreement review, data privacy compliance tool, read the fine print, plain language legal summary">
+<meta name="robots" content="index, follow">
+<meta name="author" content="Nijata">
+<meta name="application-name" content="Nijata">
+<link rel="canonical" href="https://nijata.com/">
+
+<!-- Open Graph / social sharing -->
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://nijata.com/">
+<meta property="og:site_name" content="Nijata">
+<meta property="og:title" content="Nijata — Privacy Policy &amp; Terms and Conditions Analyzer">
+<meta property="og:description" content="Drop in a privacy policy, terms of service, or vendor contract. Nijata reads it on-device and gives you a plain-language risk summary in seconds — built for individuals, teams, and businesses.">
+<meta property="og:image" content="https://nijata.com/og-image.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:locale" content="en_US">
+
+<!-- Twitter Card -->
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Nijata — Privacy Policy &amp; Terms and Conditions Analyzer">
+<meta name="twitter:description" content="Spot risky clauses and data-sharing terms before you sign. On-device analysis for individuals, teams, and businesses — no upload, no account.">
+<meta name="twitter:image" content="https://nijata.com/og-image.png">
+
+<!-- Structured data: what the tool is, who publishes it, and common business questions -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebApplication",
+  "name": "Nijata",
+  "url": "https://nijata.com/",
+  "description": "Nijata analyzes privacy policies and terms & conditions on-device and returns a plain-language risk summary, built for individuals, teams, and businesses evaluating vendor and SaaS agreements.",
+  "applicationCategory": "BusinessApplication",
+  "applicationSubCategory": "Legal Technology",
+  "operatingSystem": "Any (runs in the browser)",
+  "offers": {
+    "@type": "Offer",
+    "price": "0",
+    "priceCurrency": "USD"
+  },
+  "featureList": [
+    "Plain-language summary of privacy policies and terms & conditions",
+    "Automated risk scoring for data-sharing and liability clauses",
+    "On-device analysis — documents are never uploaded",
+    "Local scan history and dashboard across multiple documents"
+  ]
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "Organization",
+  "name": "Nijata",
+  "url": "https://nijata.com/",
+  "logo": "https://nijata.com/og-image.png",
+  "email": "noreply@nijata.com"
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    {
+      "@type": "Question",
+      "name": "Can businesses use Nijata to review vendor or SaaS contracts?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Yes. Nijata is built for individuals, teams, and businesses that need a fast first read of a privacy policy, terms of service, or vendor agreement. It flags data-sharing, liability, and renewal clauses worth a closer look, so procurement and compliance teams can triage documents before a full legal review."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Is Nijata a replacement for legal review?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "No. Nijata gives an automated, plain-language read to help you understand a document faster, not legal advice. For contracts that carry real risk or obligations, use Nijata as a first pass and have a qualified professional review anything that matters."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Does Nijata upload or store the documents a business scans?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "No. Documents are read and analyzed entirely on-device in the browser and are never uploaded to a server. Nijata keeps a private, on-device history of past scan summaries — risk level, word count, flagged phrases — so you can revisit them, but never the full document text, and nothing is transmitted anywhere."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Can multiple people on a team share Nijata's scan history?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Not yet. Nijata's dashboard and scan history live in local browser storage on a single device, so they aren't currently shared or synced across a team."
+      }
+    }
+  ]
+}
+</script>
+
+<!--
+  ============================================================
+  OWASP SECURE CODING NOTES (read before deploying standalone)
+  ============================================================
+  This app is 100% client-side and makes no network calls of its
+  own (no backend, no telemetry, no upload of document content).
+  The only local storage it uses is: a single integer scan counter
+  (SCAN_COUNT_KEY) and a capped, on-device scan history (see
+  HISTORY_KEY / addHistoryEntry) that stores derived summaries only
+  — risk level, word count, flagged phrases — never the full
+  document text, and never transmitted anywhere. That removes most of the
+  OWASP Top 10 (A01 Broken Access Control, A02 Crypto Failures on
+  data-at-rest, A03 Injection via SQL/NoSQL/LDAP, A05 SSRF) as
+  non-applicable by design. What remains, and what this file
+  addresses:
+
+    A03 Injection (XSS)     -> every value derived from the
+                                user's uploaded document is passed
+                                through escapeHtml() before it
+                                touches innerHTML; everything else
+                                uses textContent. See "OUTPUT
+                                ENCODING" note near escapeHtml().
+    A05 Security Misconfig  -> CSP + Referrer-Policy below lock
+                                down which origins can supply
+                                script/style/font/connections, and
+                                block framing/plugins/base-uri
+                                rebinding.
+    A06 Vulnerable/Outdated
+        Components           -> pdf.js and mammoth are pinned to
+                                exact versions (not @latest). If
+                                you deploy this yourself, ADD A
+                                REAL SUBRESOURCE INTEGRITY HASH to
+                                the two <script> tags below. Do not
+                                invent a hash — an incorrect one
+                                just breaks loading. Generate the
+                                real value yourself and paste it in:
+                                  curl -s <script-url> | openssl dgst -sha384 -binary | openssl base64 -A
+                                then prefix the output with "sha384-"
+                                and set it as the integrity="" attribute,
+                                alongside crossorigin="anonymous" (already
+                                present). Re-run this whenever the pinned
+                                version number changes.
+    A08 Software/Data
+        Integrity Failures    -> see SRI note above; also see
+                                MAX_CHARS / MAX file size guards
+                                against a hostile huge input.
+    A04/A09 Resource
+        exhaustion (DoS)      -> file-size cap, PDF page cap, and
+                                a hard character cap on extracted
+                                text before it's ever run through
+                                the sentence-splitting regex, so a
+                                pathological file can't hang the
+                                tab indefinitely.
+
+  A CSP delivered via <meta> cannot carry frame-ancestors, sandbox,
+  or report-uri directives (the spec restricts those to a real HTTP
+  header) — if you host this behind a server, also send those as
+  response headers, plus X-Content-Type-Options: nosniff and
+  Permissions-Policy, which likewise cannot be set from HTML alone.
+  ============================================================
+-->
+<meta http-equiv="Content-Security-Policy" content="
+  default-src 'none';
+  script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com;
+  worker-src 'self' blob: https://cdnjs.cloudflare.com;
+  style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
+  font-src https://fonts.gstatic.com;
+  img-src 'self' data:;
+  connect-src 'self';
+  object-src 'none';
+  base-uri 'none';
+  form-action 'none';
+">
+<meta name="referrer" content="no-referrer">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0%25' y1='0%25' x2='100%25' y2='100%25'%3E%3Cstop offset='0%25' stop-color='%234DD2FF'/%3E%3Cstop offset='55%25' stop-color='%23B98AFF'/%3E%3Cstop offset='100%25' stop-color='%23FF6FA0'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='100' height='100' rx='24' fill='%230B0A16'/%3E%3Ccircle cx='41' cy='41' r='25' fill='none' stroke='url(%23g)' stroke-width='12.5'/%3E%3Cline x1='58.7' y1='58.7' x2='83' y2='83' stroke='url(%23g)' stroke-width='13.5' stroke-linecap='round'/%3E%3Cpath d='M72 9 L75.4 17.2 L83.6 20.6 L75.4 24 L72 32.2 L68.6 24 L60.4 20.6 L68.6 17.2 Z' fill='%23FF6FA0'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" crossorigin="anonymous" referrerpolicy="no-referrer">
+<!-- SRI: add integrity="sha384-…" once you've copied the real hash for this exact version from cdnjs.com (see note above). -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<style>
+  :root{
+    --bg:          #0B0A16;
+    --bg-glow:     radial-gradient(ellipse 620px 320px at 50% -10%, rgba(185,138,255,0.18), transparent);
+    --surface:     #15132A;
+    --surface-2:   #1B1930;
+    --surface-3:   #242140;
+    --border:      #322D52;
+    --border-soft: #221F3C;
+    --text:        #F3F1FA;
+    --text-dim:    #A6A1C6;
+    --text-faint:  #6C6690;
+    --accent:      #B98AFF;
+    --accent-dim:  rgba(185,138,255,0.16);
+    --accent-text: #0A0C10;
+    --red:         #FF6B7F;
+    --red-dim:     rgba(255,107,127,0.14);
+    --amber:       #FFC15E;
+    --amber-dim:   rgba(255,193,94,0.14);
+    --green:       #34E4A1;
+    --green-dim:   rgba(52,228,161,0.14);
+    --font-display:'Space Grotesk', ui-sans-serif, -apple-system, sans-serif;
+    --font-mono:   'IBM Plex Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;
+    --r-lg: 22px;
+    --r-md: 16px;
+    --r-sm: 11px;
+    --shadow-1: 0 1px 0 rgba(255,255,255,0.03) inset, 0 8px 24px rgba(0,0,0,0.35);
+  }
+
+  *{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+
+  html,body{ margin:0; padding:0; min-height:100%; }
+
+  body{
+    background: var(--bg-glow), var(--bg);
+    background-attachment: fixed;
+    color:var(--text);
+    font-family:var(--font-display);
+    -webkit-font-smoothing:antialiased;
+  }
+
+  #app{
+    max-width:520px;
+    margin:0 auto;
+    min-height:100vh;
+    min-height:100dvh;
+    padding: max(16px, env(safe-area-inset-top)) 18px max(28px, env(safe-area-inset-bottom));
+    display:flex;
+    flex-direction:column;
+    transition: max-width .15s ease;
+  }
+
+  /* ---------- Responsive: tablet / laptop ---------- */
+  @media (min-width:760px){
+    #app{ max-width:760px; padding-left:32px; padding-right:32px; }
+    .upload-grid{
+      display:grid;
+      grid-template-columns: 1.15fr 1fr;
+      gap:48px;
+      align-items:center;
+    }
+    .hero{ padding:0; }
+    .hero h1{ font-size:44px; }
+    .hero p{ max-width:40ch; }
+    .cat-section{ display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+    .footer-actions{ max-width:420px; margin-left:auto; margin-right:auto; }
+    .gauge-card{ padding:32px 28px 26px; }
+  }
+  @media (min-width:1024px){
+    #app{ max-width:860px; }
+    .hero h1{ font-size:50px; }
+  }
+
+  /* Pointer-aware hover states — this app runs on laptops too, not just
+     touch screens, so interactive elements get a hover affordance in
+     addition to the existing :active press states. */
+  @media (hover:hover) and (pointer:fine){
+    .tab:hover:not(.active){ color:var(--text); }
+    .primary-btn:hover:not(:disabled){ filter:brightness(1.06); }
+    .btn-solid:hover{ filter:brightness(1.06); }
+    .btn-outline:hover{ border-color:var(--text-faint); }
+    .icon-btn:hover{ border-color:var(--text-faint); color:var(--text); }
+    .category .cat-row:hover{ background:var(--surface-2); }
+  }
+
+  /* ---------- Top bar ---------- */
+  .topbar{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    padding:10px 2px 22px;
+  }
+  .brand{ display:flex; align-items:center; gap:9px; }
+  .topbar-right{ display:flex; align-items:center; gap:8px; }
+  .logo-mark{
+    width:32px; height:32px;
+    flex-shrink:0;
+    display:block;
+    filter: drop-shadow(0 2px 8px rgba(52,228,161,0.35));
+  }
+  .brand-name{ font-weight:600; font-size:17px; letter-spacing:-0.01em; }
+  .badge{
+    display:flex; align-items:center; gap:5px;
+    font-family:var(--font-mono);
+    font-size:10.5px;
+    letter-spacing:0.02em;
+    color:var(--text-dim);
+    background:var(--surface-2);
+    border:1px solid var(--border);
+    padding:6px 10px 6px 8px;
+    border-radius:999px;
+  }
+  .badge svg{ width:11px; height:11px; color:var(--accent); flex-shrink:0; }
+
+  /* ---------- Screens ---------- */
+  .screen{ display:none; flex:1; flex-direction:column; }
+  .screen.active{ display:flex; animation: fadeIn .35s ease both; }
+  @keyframes fadeIn{ from{ opacity:0; transform:translateY(6px);} to{ opacity:1; transform:none; } }
+
+  /* ---------- Upload screen ---------- */
+  .hero{ padding: 10px 2px 20px; }
+  .hero h1{
+    font-weight:700;
+    font-size:34px;
+    line-height:1.08;
+    letter-spacing:-0.02em;
+    margin:0 0 12px;
+  }
+  .hero h1 .accent-text{
+    background:linear-gradient(100deg, #4DD2FF, var(--accent) 55%, #FF6FA0 100%);
+    -webkit-background-clip:text;
+    background-clip:text;
+    color:transparent;
+  }
+
+  .eyebrow{
+    font-family:var(--font-mono);
+    font-size:11.5px;
+    letter-spacing:0.08em;
+    text-transform:uppercase;
+    color:var(--text-faint);
+    margin-bottom:10px;
+  }
+
+  .use-cases{
+    display:flex;
+    flex-wrap:wrap;
+    gap:10px;
+    margin-top:22px;
+  }
+  .use-case-chip{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    background:var(--surface);
+    border:1px solid var(--border-soft);
+    border-radius:999px;
+    padding:9px 15px 9px 12px;
+    font-size:13px;
+    color:var(--text-dim);
+  }
+  .use-case-chip svg{ width:15px; height:15px; color:var(--accent); flex-shrink:0; }
+
+  .faq-section{ margin-top:28px; }
+  .faq-section h2{
+    font-family:var(--font-display);
+    font-size:16px;
+    font-weight:600;
+    color:var(--text);
+    margin:0 0 12px;
+  }
+  .faq-item{
+    background:var(--surface);
+    border:1px solid var(--border-soft);
+    border-radius:var(--r-md);
+    padding:2px 16px;
+    margin-bottom:9px;
+  }
+  .faq-item summary{
+    list-style:none;
+    cursor:pointer;
+    padding:14px 22px 14px 0;
+    font-weight:600;
+    font-size:14px;
+    color:var(--text);
+    position:relative;
+  }
+  .faq-item summary::-webkit-details-marker{ display:none; }
+  .faq-item summary::after{
+    content:"+";
+    position:absolute;
+    right:0;
+    top:12px;
+    font-size:18px;
+    color:var(--text-faint);
+  }
+  .faq-item[open] summary::after{ content:"–"; }
+  .faq-item p{
+    font-size:13.5px;
+    line-height:1.65;
+    color:var(--text-dim);
+    margin:0 0 16px;
+  }
+  .hero p{
+    font-size:15.5px;
+    line-height:1.55;
+    color:var(--text-dim);
+    margin:0;
+    max-width:36ch;
+  }
+
+  .card{
+    background:var(--surface);
+    border:1px solid var(--border-soft);
+    border-radius:var(--r-lg);
+    box-shadow:var(--shadow-1);
+    padding:14px;
+  }
+
+  .tabs{
+    display:flex;
+    gap:4px;
+    background:var(--surface-2);
+    border-radius:999px;
+    padding:4px;
+    margin-bottom:16px;
+  }
+  .tab{
+    flex:1;
+    border:none;
+    background:none;
+    color:var(--text-dim);
+    font-family:var(--font-display);
+    font-weight:600;
+    font-size:13.5px;
+    padding:9px 10px;
+    border-radius:999px;
+    cursor:pointer;
+    transition: color .15s ease, background .15s ease;
+  }
+  .tab.active{ background:var(--surface-3); color:var(--text); box-shadow: 0 1px 0 rgba(255,255,255,0.04) inset; }
+
+  .tab-panel{ display:none; }
+  .tab-panel.active{ display:block; animation: fadeIn .25s ease both; }
+
+  .dropzone{
+    border:1.5px dashed var(--border);
+    border-radius:var(--r-md);
+    padding:30px 16px;
+    text-align:center;
+    cursor:pointer;
+    transition: border-color .15s ease, background .15s ease, transform .1s ease;
+  }
+  .dropzone:hover{ border-color:#39415280; }
+  .dropzone.drag{
+    border-color:var(--accent);
+    background:var(--accent-dim);
+  }
+  .dropzone:active{ transform:scale(0.99); }
+  .dz-icon{
+    width:52px; height:52px;
+    margin:0 auto 14px;
+    border-radius:16px;
+    background:var(--accent-dim);
+    display:flex; align-items:center; justify-content:center;
+  }
+  .dz-icon svg{ width:24px; height:24px; color:var(--accent); }
+  .dz-title{ font-weight:600; font-size:15.5px; margin-bottom:12px; }
+  .dz-formats{ display:flex; gap:6px; justify-content:center; }
+  .chip{
+    font-family:var(--font-mono);
+    font-size:10px;
+    letter-spacing:0.04em;
+    color:var(--text-faint);
+    background:var(--surface-2);
+    border:1px solid var(--border-soft);
+    padding:4px 9px;
+    border-radius:999px;
+  }
+  #file-input{ display:none; }
+
+  .paste-box textarea{
+    width:100%;
+    min-height:150px;
+    resize:vertical;
+    font-family:var(--font-display);
+    font-size:14.5px;
+    line-height:1.5;
+    padding:13px;
+    border:1px solid var(--border);
+    border-radius:var(--r-md);
+    background:var(--surface-2);
+    color:var(--text);
+  }
+  .paste-box textarea::placeholder{ color:var(--text-faint); }
+  .paste-box textarea:focus{ outline:none; border-color:var(--accent); }
+
+  .primary-btn{
+    margin-top:12px;
+    width:100%;
+    font-family:var(--font-display);
+    font-weight:600;
+    font-size:14.5px;
+    padding:14px 16px;
+    background:var(--accent);
+    color:var(--accent-text);
+    border:none;
+    border-radius:999px;
+    cursor:pointer;
+    transition: opacity .15s ease, transform .1s ease;
+  }
+  .primary-btn:disabled{ opacity:0.3; cursor:not-allowed; }
+  .primary-btn:active:not(:disabled){ transform:scale(0.98); }
+
+  .error-msg{
+    display:none;
+    margin-top:14px;
+    font-size:13.5px;
+    color:#FFD3D9;
+    background:var(--red-dim);
+    border:1px solid rgba(255,107,127,0.28);
+    padding:11px 13px;
+    border-radius:var(--r-sm);
+  }
+  .error-msg.active{ display:block; animation: fadeIn .2s ease both; }
+
+  .fine-print{
+    margin-top:auto;
+    padding-top:26px;
+    font-size:12px;
+    line-height:1.6;
+    color:var(--text-faint);
+    text-align:center;
+  }
+  .device-count{
+    display:none;
+    align-items:center;
+    justify-content:center;
+    gap:6px;
+    margin-top:16px;
+    font-family:var(--font-mono);
+    font-size:11px;
+    letter-spacing:0.02em;
+    color:var(--text-faint);
+  }
+  .device-count.active{ display:flex; }
+  .device-count svg{ width:12px; height:12px; color:var(--accent); flex-shrink:0; }
+
+  /* ---------- Scanning screen ---------- */
+  .scan-wrap{
+    flex:1;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    text-align:center;
+    gap:26px;
+  }
+  .spinner-wrap{ position:relative; width:84px; height:84px; }
+  .spinner{
+    width:84px; height:84px;
+    border-radius:50%;
+    border:4px solid var(--surface-3);
+    border-top-color:var(--accent);
+    animation: spin 0.9s linear infinite;
+  }
+  .spinner-icon{
+    position:absolute; inset:0;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .spinner-icon svg{ width:28px; height:28px; color:var(--accent); }
+  @keyframes spin{ to{ transform:rotate(360deg); } }
+  .scan-status{
+    font-family:var(--font-mono);
+    font-size:12.5px;
+    letter-spacing:0.02em;
+    color:var(--text-dim);
+    min-height:18px;
+  }
+
+  /* ---------- Report screen ---------- */
+  .report-top{
+    display:flex;
+    justify-content:space-between;
+    align-items:flex-start;
+    padding:6px 2px 18px;
+  }
+  .rep-filename{ font-weight:600; font-size:15.5px; word-break:break-word; max-width:75%; }
+  .rep-stats{ font-family:var(--font-mono); font-size:11px; color:var(--text-faint); margin-top:4px; }
+  .icon-btn{
+    width:36px; height:36px;
+    border-radius:999px;
+    background:var(--surface-2);
+    border:1px solid var(--border);
+    color:var(--text-dim);
+    display:flex; align-items:center; justify-content:center;
+    cursor:pointer;
+    flex-shrink:0;
+  }
+  .icon-btn svg{ width:16px; height:16px; }
+  .icon-btn:active{ transform:scale(0.94); }
+
+  .gauge-card{
+    background:var(--surface);
+    border:1px solid var(--border-soft);
+    border-radius:var(--r-lg);
+    box-shadow:var(--shadow-1);
+    padding:26px 20px 22px;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    text-align:center;
+  }
+  .gauge-wrap{ position:relative; width:150px; height:150px; }
+  .gauge-svg{ width:150px; height:150px; transform:rotate(-90deg); }
+  .gauge-track{ fill:none; stroke:var(--surface-3); stroke-width:11; }
+  .gauge-fill{
+    fill:none; stroke-width:11; stroke-linecap:round;
+    transition: stroke-dashoffset 1s cubic-bezier(.22,.9,.3,1), stroke 0.3s ease;
+  }
+  .gauge-center{
+    position:absolute; inset:0;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+  }
+  .gauge-risk{ font-weight:700; font-size:22px; letter-spacing:-0.01em; }
+  .gauge-sub{ font-family:var(--font-mono); font-size:10px; letter-spacing:0.14em; color:var(--text-faint); margin-top:2px; }
+  .risk-reason{
+    margin:16px 0 0;
+    font-size:14px;
+    line-height:1.55;
+    color:var(--text-dim);
+    max-width:32ch;
+  }
+
+  .stat-row{ display:flex; gap:10px; margin-top:14px; }
+  .stat-card{
+    flex:1;
+    background:var(--surface);
+    border:1px solid var(--border-soft);
+    border-radius:var(--r-md);
+    padding:14px 8px;
+    text-align:center;
+  }
+  .stat-card svg{ width:16px; height:16px; color:var(--text-faint); margin-bottom:8px; }
+  .stat-n{ font-weight:700; font-size:18px; }
+  .stat-l{ font-family:var(--font-mono); font-size:9.5px; letter-spacing:0.05em; color:var(--text-faint); text-transform:uppercase; margin-top:2px; }
+
+  .panel-card{
+    background:var(--surface);
+    border:1px solid var(--border-soft);
+    border-radius:var(--r-lg);
+    box-shadow:var(--shadow-1);
+    padding:18px;
+    margin-top:14px;
+  }
+  .panel-head{
+    display:flex; align-items:center; gap:8px;
+    font-weight:600;
+    font-size:13px;
+    letter-spacing:0.02em;
+    text-transform:uppercase;
+    color:var(--text-dim);
+    margin-bottom:12px;
+  }
+  .panel-head.flag-head{ color:#FFAFBB; }
+  .panel-icon{ color:var(--accent); font-size:14px; }
+
+  .gist-card p{
+    font-size:16px;
+    line-height:1.6;
+    margin:0 0 10px;
+    color:var(--text);
+  }
+  .gist-card p:last-child{ margin-bottom:0; }
+
+  .flag-list{ display:flex; flex-direction:column; gap:8px; }
+  .flag-item{
+    display:flex; align-items:flex-start; gap:9px;
+    background:var(--red-dim);
+    border:1px solid rgba(255,107,127,0.2);
+    border-radius:var(--r-sm);
+    padding:10px 12px;
+    font-size:14px;
+    line-height:1.45;
+    color:#FFE1E6;
+  }
+  .flag-item svg{ width:15px; height:15px; color:var(--red); flex-shrink:0; margin-top:2px; }
+  .no-flags{
+    font-size:14px; color:var(--text-dim);
+    background:var(--green-dim);
+    border:1px solid rgba(52,228,161,0.22);
+    border-radius:var(--r-sm);
+    padding:12px;
+  }
+
+  .cat-section{ margin-top:14px; display:flex; flex-direction:column; gap:9px; }
+  .category{
+    background:var(--surface);
+    border:1px solid var(--border-soft);
+    border-radius:var(--r-md);
+    overflow:hidden;
+  }
+  .cat-row{
+    display:flex;
+    align-items:center;
+    gap:12px;
+    padding:13px 14px;
+    cursor:pointer;
+  }
+  .cat-icon{
+    width:36px; height:36px;
+    border-radius:11px;
+    display:flex; align-items:center; justify-content:center;
+    flex-shrink:0;
+    background:var(--surface-3);
+    color:var(--text-faint);
+  }
+  .cat-icon.found{ background:var(--accent-dim); color:var(--accent); }
+  .cat-icon svg{ width:17px; height:17px; }
+  .cat-body{ flex:1; min-width:0; }
+  .cat-title{
+    font-family:var(--font-mono);
+    font-size:10px;
+    letter-spacing:0.06em;
+    text-transform:uppercase;
+    color:var(--text-faint);
+    margin-bottom:3px;
+  }
+  .cat-finding{ font-size:14.5px; line-height:1.4; color:var(--text); }
+  .cat-chevron{
+    width:20px; height:20px;
+    color:var(--text-faint);
+    flex-shrink:0;
+    transition: transform .2s ease;
+  }
+  .category.open .cat-chevron{ transform:rotate(180deg); }
+
+  .cat-evidence-wrap{
+    max-height:0;
+    overflow:hidden;
+    transition: max-height .25s ease;
+  }
+  .category.open .cat-evidence-wrap{ max-height:220px; }
+  .cat-evidence{
+    margin:0 14px 14px;
+    padding:11px 12px;
+    background:var(--surface-2);
+    border-left:2px solid var(--border);
+    border-radius:8px;
+    font-family:var(--font-mono);
+    font-size:12px;
+    line-height:1.6;
+    color:var(--text-dim);
+    font-style:italic;
+  }
+
+  .footer-actions{ display:flex; gap:10px; padding-top:18px; }
+  .btn-outline, .btn-solid{
+    flex:1;
+    font-family:var(--font-display);
+    font-weight:600;
+    font-size:13.5px;
+    padding:13px;
+    border-radius:999px;
+    cursor:pointer;
+    transition: transform .1s ease, opacity .15s ease;
+  }
+  .btn-outline{ background:none; border:1px solid var(--border); color:var(--text); }
+  .btn-solid{ background:var(--accent); border:none; color:var(--accent-text); }
+  .btn-outline:active, .btn-solid:active{ transform:scale(0.98); }
+
+  .disclaimer{
+    font-size:11px;
+    line-height:1.6;
+    color:var(--text-faint);
+    text-align:center;
+    padding:20px 6px 4px;
+  }
+
+  /* ---------- Legal links & screens ---------- */
+  .legal-links{
+    display:flex;
+    justify-content:center;
+    gap:8px;
+    margin-top:10px;
+    font-family:var(--font-mono);
+    font-size:11px;
+  }
+  .legal-link{
+    color:var(--text-dim);
+    text-decoration:underline;
+    text-underline-offset:2px;
+    text-decoration-color:var(--border);
+    background:none;
+    border:none;
+    padding:0;
+    cursor:pointer;
+    font-family:inherit;
+    font-size:inherit;
+  }
+  .legal-link:hover{ color:var(--text); text-decoration-color:var(--accent); }
+  .legal-sep{ color:var(--text-faint); }
+
+  .legal-card{ margin-top:0; }
+  .legal-updated{
+    font-family:var(--font-mono);
+    font-size:10.5px;
+    letter-spacing:0.04em;
+    color:var(--text-faint);
+    margin:-4px 0 14px;
+  }
+  .legal-body h3{
+    font-size:14px;
+    font-weight:600;
+    color:var(--text);
+    margin:20px 0 8px;
+  }
+  .legal-body h3:first-child{ margin-top:0; }
+  .legal-body p{
+    font-size:14px;
+    line-height:1.65;
+    color:var(--text-dim);
+    margin:0 0 10px;
+  }
+  .legal-body ul{
+    margin:0 0 10px;
+    padding-left:18px;
+  }
+  .legal-body li{
+    font-size:14px;
+    line-height:1.6;
+    color:var(--text-dim);
+    margin-bottom:6px;
+  }
+  .legal-body strong{ color:var(--text); }
+  .legal-body a{ color:var(--accent); }
+
+  /* ---------- Dashboard / history screen ---------- */
+  .history-list{ display:flex; flex-direction:column; gap:9px; margin-top:14px; }
+  .history-item{
+    display:flex;
+    align-items:center;
+    gap:12px;
+    background:var(--surface);
+    border:1px solid var(--border-soft);
+    border-radius:var(--r-md);
+    padding:13px 14px;
+    cursor:pointer;
+    transition: background .15s ease, transform .1s ease;
+  }
+  .history-item:active{ transform:scale(0.99); }
+  @media (hover:hover) and (pointer:fine){
+    .history-item:hover{ background:var(--surface-2); }
+  }
+  .history-dot{ width:10px; height:10px; border-radius:50%; flex-shrink:0; }
+  .history-body{ flex:1; min-width:0; }
+  .history-label{
+    font-weight:600; font-size:14.5px;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  }
+  .history-meta{ font-family:var(--font-mono); font-size:11px; color:var(--text-faint); margin-top:3px; }
+  .history-risk-tag{
+    font-family:var(--font-mono);
+    font-size:10px;
+    letter-spacing:0.05em;
+    text-transform:uppercase;
+    padding:5px 9px;
+    border-radius:999px;
+    flex-shrink:0;
+  }
+  .history-delete{
+    width:28px; height:28px;
+    border-radius:999px;
+    background:none;
+    border:none;
+    color:var(--text-faint);
+    display:flex; align-items:center; justify-content:center;
+    cursor:pointer;
+    flex-shrink:0;
+  }
+  .history-delete svg{ width:14px; height:14px; }
+  .history-delete:hover{ color:var(--red); background:var(--red-dim); }
+  .history-empty{
+    font-size:14px; color:var(--text-dim);
+    background:var(--surface);
+    border:1px solid var(--border-soft);
+    border-radius:var(--r-lg);
+    padding:22px 16px;
+    text-align:center;
+    margin-top:14px;
+  }
+
+  /* ---------- Print ----------
+     A plain browser "print to PDF" only renders whichever .screen has
+     .active — meaning Terms & Conditions or Privacy Policy could each
+     get exported and read (or scanned) on their own, missing the other
+     half of the picture. Force the three static content screens to
+     print together, in order, and drop interactive-only chrome that
+     means nothing on paper. */
+  @media print{
+    body{ background:#fff; color:#111; }
+    .topbar, .device-count, .footer-actions, .fine-print .legal-links,
+    button, input, textarea, .tabs, .dropzone{
+      display:none !important;
+    }
+    #screen-upload, #screen-terms, #screen-privacy{
+      display:flex !important;
+      opacity:1 !important;
+      animation:none !important;
+      break-after:page;
+    }
+    #screen-privacy{ break-after:auto; }
+    .legal-card, .panel-card{ border-color:#ccc; background:#fff; box-shadow:none; }
+    .legal-body h3{ color:#111; }
+    .legal-body p, .legal-body li{ color:#333; }
+  }
+
+  ::selection{ background:var(--accent); color:#06120D; }
+
+  @media (prefers-reduced-motion: reduce){
+    .spinner{ animation:none; }
+    .screen.active, .tab-panel.active, .error-msg.active{ animation:none; }
+    .gauge-fill{ transition:none; }
+  }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <header class="topbar">
+    <div class="brand">
+      <svg class="logo-mark" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <defs>
+          <linearGradient id="nijataGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#4DD2FF"/>
+            <stop offset="55%" stop-color="#B98AFF"/>
+            <stop offset="100%" stop-color="#FF6FA0"/>
+          </linearGradient>
+        </defs>
+        <circle cx="13" cy="13" r="8" fill="none" stroke="url(#nijataGrad)" stroke-width="4"/>
+        <line x1="18.7" y1="18.7" x2="27" y2="27" stroke="url(#nijataGrad)" stroke-width="4.4" stroke-linecap="round"/>
+        <path d="M23 3 L24.4 5.6 L27 7 L24.4 8.4 L23 11 L21.6 8.4 L19 7 L21.6 5.6 Z" fill="#FF6FA0"/>
+      </svg>
+      <div class="brand-name">Nijata</div>
+    </div>
+    <div class="topbar-right">
+      <button class="icon-btn" id="dashboard-btn" aria-label="Your scan history">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19V10M12 19V5M20 19v-7"/></svg>
+      </button>
+      <div class="badge">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+        On-device
+      </div>
+    </div>
+  </header>
+
+  <!-- ============ UPLOAD SCREEN ============ -->
+  <section class="screen active" id="screen-upload">
+    <div class="upload-grid">
+      <div class="hero">
+        <div class="eyebrow">Privacy Policy &amp; Terms and Conditions Analyzer</div>
+        <h1>What did you<br>just <span class="accent-text">agree to?</span></h1>
+        <p>Drop in a privacy policy or terms &amp; conditions. Skip the legal jargon — get what actually matters for your privacy, in plain language, in seconds.</p>
+        <div class="use-cases">
+          <div class="use-case-chip">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21a8 8 0 0 0-16 0"/><circle cx="12" cy="7" r="4"/></svg>
+            For individuals
+          </div>
+          <div class="use-case-chip">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+            For teams
+          </div>
+          <div class="use-case-chip">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>
+            For businesses &amp; vendor reviews
+          </div>
+        </div>
+      </div>
+
+      <div class="card upload-card">
+        <div class="tabs" role="tablist">
+          <button class="tab active" id="tab-upload" role="tab" aria-selected="true">Upload file</button>
+          <button class="tab" id="tab-paste" role="tab" aria-selected="false">Paste text</button>
+        </div>
+
+        <div class="tab-panel active" id="panel-upload">
+          <div class="dropzone" id="dropzone" tabindex="0" role="button" aria-label="Upload a document">
+            <div class="dz-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4M12 4l-4 4M12 4l4 4"/><path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
+            </div>
+            <div class="dz-title">Drop file, or tap to choose</div>
+            <div class="dz-formats">
+              <span class="chip">PDF</span><span class="chip">DOCX</span><span class="chip">TXT</span>
+            </div>
+          </div>
+          <input type="file" id="file-input" accept=".pdf,.docx,.txt,text/plain,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
+        </div>
+
+        <div class="tab-panel paste-box" id="panel-paste">
+          <textarea id="paste-text" maxlength="400000" placeholder="Paste the privacy policy or terms & conditions text here…"></textarea>
+          <button class="primary-btn" id="analyze-paste-btn" disabled>Analyze pasted text</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="error-msg" id="error-msg"></div>
+
+    <div class="device-count" id="device-count">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+      <span id="device-count-text"></span>
+    </div>
+
+    <div class="fine-print">
+      Everything runs on your device. Your documents are never sent anywhere — only a private, on-device history is kept so you can revisit past scans. This is an automated read, not legal advice.
+      <div class="legal-links">
+        <button class="legal-link" id="link-terms">Terms &amp; Conditions</button>
+        <span class="legal-sep">·</span>
+        <button class="legal-link" id="link-privacy">Privacy Policy</button>
+      </div>
+    </div>
+
+    <div class="faq-section">
+      <h2>Common questions</h2>
+      <details class="faq-item">
+        <summary>Can businesses use Nijata to review vendor or SaaS contracts?</summary>
+        <p>Yes. Nijata is built for individuals, teams, and businesses that need a fast first read of a privacy policy, terms of service, or vendor agreement. It flags data-sharing, liability, and renewal clauses worth a closer look, so procurement and compliance teams can triage documents before a full legal review.</p>
+      </details>
+      <details class="faq-item">
+        <summary>Is Nijata a replacement for legal review?</summary>
+        <p>No. Nijata gives an automated, plain-language read to help you understand a document faster — not legal advice. For contracts that carry real risk or obligations, use Nijata as a first pass and have a qualified professional review anything that matters.</p>
+      </details>
+      <details class="faq-item">
+        <summary>Does Nijata upload or store the documents a business scans?</summary>
+        <p>No. Documents are read and analyzed entirely on-device in the browser and are never uploaded to a server. Nijata keeps a private, on-device history of past scan summaries — risk level, word count, flagged phrases — so you can revisit them, but never the full document text, and nothing is transmitted anywhere.</p>
+      </details>
+      <details class="faq-item">
+        <summary>Can multiple people on a team share Nijata's scan history?</summary>
+        <p>Not yet. Nijata's dashboard and scan history live in local browser storage on a single device, so they aren't currently shared or synced across a team.</p>
+      </details>
+    </div>
+  </section>
+
+  <!-- ============ SCANNING SCREEN ============ -->
+  <section class="screen" id="screen-scanning">
+    <div class="scan-wrap">
+      <div class="spinner-wrap">
+        <div class="spinner"></div>
+        <div class="spinner-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 4 6v6c0 5 3.4 8.7 8 10 4.6-1.3 8-5 8-10V6z"/></svg>
+        </div>
+      </div>
+      <div class="scan-status" id="scan-status">Reading document…</div>
+    </div>
+  </section>
+
+  <!-- ============ REPORT SCREEN ============ -->
+  <section class="screen" id="screen-report">
+    <div class="report-top">
+      <div>
+        <div class="rep-filename" id="rep-filename">document</div>
+        <div class="rep-stats" id="rep-stats"></div>
+      </div>
+      <button class="icon-btn" id="new-scan-btn" aria-label="New scan">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+      </button>
+    </div>
+
+    <div class="gauge-card">
+      <div class="gauge-wrap">
+        <svg class="gauge-svg" viewBox="0 0 150 150">
+          <circle class="gauge-track" cx="75" cy="75" r="60"/>
+          <circle class="gauge-fill" id="gauge-fill" cx="75" cy="75" r="60"/>
+        </svg>
+        <div class="gauge-center">
+          <div class="gauge-risk" id="gauge-risk">LOW</div>
+          <div class="gauge-sub">RISK</div>
+        </div>
+      </div>
+      <p class="risk-reason" id="risk-reason"></p>
+    </div>
+
+    <div class="stat-row">
+      <div class="stat-card">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
+        <div class="stat-n" id="stat-words">–</div><div class="stat-l">Words</div>
+      </div>
+      <div class="stat-card">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
+        <div class="stat-n" id="stat-time">–</div><div class="stat-l">Read time</div>
+      </div>
+      <div class="stat-card">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 21V4l14 6-14 6"/></svg>
+        <div class="stat-n" id="stat-flags">–</div><div class="stat-l">Flags</div>
+      </div>
+    </div>
+
+    <div class="panel-card gist-card">
+      <div class="panel-head"><span class="panel-icon">✦</span>The Gist</div>
+      <div id="gist-body"></div>
+    </div>
+
+    <div class="panel-card">
+      <div class="panel-head flag-head">Red Flags</div>
+      <div class="flag-list" id="flag-list"></div>
+    </div>
+
+    <div class="cat-section" id="category-list"></div>
+
+    <div class="footer-actions">
+      <button class="btn-outline" id="copy-btn">Copy summary</button>
+      <button class="btn-solid" id="rescan-btn">Scan another</button>
+    </div>
+
+    <div class="disclaimer">Automated, on-device analysis. Not legal advice — when in doubt, read the source document.</div>
+  </section>
+
+  <!-- ============ DASHBOARD / HISTORY SCREEN ============ -->
+  <section class="screen" id="screen-history">
+    <div class="report-top">
+      <div>
+        <div class="rep-filename">Your Dashboard</div>
+        <div class="rep-stats" id="history-subtitle">No scans yet</div>
+      </div>
+      <button class="icon-btn" id="history-back-btn" aria-label="Back">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+      </button>
+    </div>
+
+    <div class="stat-row">
+      <div class="stat-card">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19V10M12 19V5M20 19v-7"/></svg>
+        <div class="stat-n" id="hist-stat-total">0</div><div class="stat-l">Scanned</div>
+      </div>
+      <div class="stat-card">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.9 2.7 17a2 2 0 0 0 1.7 3h15.2a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg>
+        <div class="stat-n" id="hist-stat-high">0</div><div class="stat-l">High risk</div>
+      </div>
+      <div class="stat-card">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 12l2 2 4-4"/><path d="M12 3 5 6v6c0 5 3 8.5 7 9 4-.5 7-4 7-9V6z"/></svg>
+        <div class="stat-n" id="hist-stat-low">0</div><div class="stat-l">Low risk</div>
+      </div>
+    </div>
+
+    <div class="history-empty" id="history-empty-card">No scans yet — analyze a policy and it'll show up here so you can revisit it anytime.</div>
+
+    <div class="history-list" id="history-list"></div>
+
+    <div class="footer-actions" id="history-footer-actions" style="display:none;">
+      <button class="btn-outline" id="clear-history-btn">Clear history</button>
+    </div>
+  </section>
+
+  <!-- ============ TERMS & CONDITIONS SCREEN ============ -->
+  <section class="screen" id="screen-terms">
+    <div class="report-top">
+      <div>
+        <div class="rep-filename">Terms &amp; Conditions</div>
+        <div class="legal-updated">Last updated September 12, 2026</div>
+      </div>
+      <button class="icon-btn" id="terms-back-btn" aria-label="Back">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+      </button>
+    </div>
+
+    <div class="panel-card legal-card">
+      <div class="legal-body">
+        <h3>1. Welcome</h3>
+        <p>Nijata ("we," "us," "the app") helps you understand privacy policies and terms &amp; conditions by scanning documents you upload or paste, and giving you a plain-language summary and risk read. By using Nijata, you agree to these Terms &amp; Conditions. If you don't agree, please don't use the app.</p>
+
+        <h3>2. Who can use Nijata</h3>
+        <p>Nijata is designed to be friendly for teens as well as adults. If you're under 13, please use Nijata together with a parent or guardian. If you're between 13 and 18, make sure a parent or guardian is okay with you using it, especially if your school or family has its own rules about apps like this.</p>
+
+        <h3>3. Not legal advice</h3>
+        <p>Nijata gives you an automated, plain-language read of a document — it's a study buddy, not a lawyer. It can miss things or get nuance wrong, especially with long or unusually worded documents. Never treat Nijata's output as legal advice, and don't rely on it alone for serious decisions. When something really matters, read the original document or ask a trusted adult or a real lawyer.</p>
+
+        <h3>4. How the app works</h3>
+        <p>Nijata reads the file or text you provide entirely on your own device — in your browser, using on-device processing. It doesn't upload your document to a server, and it doesn't need an account to work. For the full picture of what little data Nijata does keep on your device and why, see our <a href="#" id="terms-to-privacy-link">Privacy Policy</a>.</p>
+
+        <h3>5. Your responsibilities</h3>
+        <ul>
+          <li>Only upload documents you have the right to view and analyze.</li>
+          <li>Don't use Nijata to try to break, overload, or reverse-engineer the app.</li>
+          <li>Don't use Nijata for anything illegal or to harm someone else.</li>
+        </ul>
+
+        <h3>6. Your rights &amp; control</h3>
+        <p>Because Nijata never uploads or stores your actual documents, there's very little of yours for us to hold — but what little the app keeps on your device, you fully control. You always have the right to access, review, or delete your local scan history, and you can opt out of keeping any history at all by clearing it after every scan. There's no account, subscription, or mailing list to unsubscribe from, since we never created one, and you can simply stop using the app — or withdraw consent to anything described here — at any time.</p>
+
+        <h3>7. Security</h3>
+        <p>Your documents and scan history live only on your device, so there's no central database of user content for us to lose or for an attacker to breach. Nijata itself is delivered to your browser over an encrypted HTTPS connection. If we ever became aware of a security incident affecting the app's own code or delivery — as opposed to your device, which we have no visibility into — we'd disclose it here and update the "Last updated" date above.</p>
+
+        <h3>8. No accounts, no guarantees</h3>
+        <p>Nijata doesn't require sign-up and doesn't promise the analysis will be perfect, available every second, or free of bugs. We provide the app "as is," and do our best to keep it useful and accurate.</p>
+
+        <h3>9. Intellectual property</h3>
+        <p>The Nijata name, logo, and app design belong to us. The documents you scan remain yours — we never claim any ownership over content you upload or paste.</p>
+
+        <h3>10. Limitation of liability</h3>
+        <p>To the fullest extent the law allows, we aren't liable for decisions you make based on Nijata's summaries, or for any indirect or incidental damages from using the app.</p>
+
+        <h3>11. Changes to these Terms</h3>
+        <p>We may update these Terms as Nijata grows. We'll update the "Last updated" date above when we do. Continuing to use Nijata after a change means you accept the updated Terms.</p>
+
+        <h3>12. Contact</h3>
+        <p>Questions about these Terms? Reach us at <strong>noreply@nijata.com</strong>. For how we handle data specifically, see our <a href="#" id="terms-to-privacy-link-2">Privacy Policy</a>.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ PRIVACY POLICY SCREEN ============ -->
+  <section class="screen" id="screen-privacy">
+    <div class="report-top">
+      <div>
+        <div class="rep-filename">Privacy Policy</div>
+        <div class="legal-updated">Last updated September 12, 2026</div>
+      </div>
+      <button class="icon-btn" id="privacy-back-btn" aria-label="Back">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+      </button>
+    </div>
+
+    <div class="panel-card legal-card">
+      <div class="legal-body">
+        <h3>The short version</h3>
+        <p>Nijata is built to be private by default. The document you upload or paste is read and analyzed <strong>entirely on your own device</strong>. It is never uploaded, transmitted, or stored on any server we run — we simply don't have a way to see it.</p>
+
+        <h3>What we actually store</h3>
+        <p>Nijata keeps a private scan history on your device so your Dashboard can show every policy you've checked in one place. For each scan, we save the document's name, the date, its risk level, word count, and the flagged phrases and short quotes Nijata found — never the full original document. This all lives in your browser's local storage, is never uploaded, and only your device can see it. You can clear it any time from the Dashboard or by clearing your browser's site data for Nijata.</p>
+
+        <h3>What we don't collect</h3>
+        <ul>
+          <li>We don't create accounts, so we don't collect names, emails, or passwords through the app itself.</li>
+          <li>We don't upload, transmit, or keep a copy of the full documents you scan — only the short summary described above, and only on your device.</li>
+          <li>We don't use tracking cookies or sell any data — because we don't have any of your data to sell.</li>
+        </ul>
+
+        <h3>Who we share data with</h3>
+        <p>Nobody. Nijata has no server-side database of your documents or history, so there's nothing to hand to third parties, affiliates, advertising partners, or advertisers. We don't share, rent, or sell your information to anyone, and we've never received a law enforcement request for it — because we have no user data to hand over even if asked.</p>
+
+        <h3>How long we keep it</h3>
+        <p>There's no fixed retention period beyond what sits in your own browser: your local scan history stays on your device only until you delete it or clear your browser's site data — it isn't retained anywhere else, indefinitely or otherwise.</p>
+
+        <h3>Loading the app</h3>
+        <p>To load Nijata's fonts and the tools that read PDF and Word files, your browser fetches a few files from Google Fonts and the cdnjs content delivery network. Like any website, those providers may see standard request information (such as your IP address and browser type) as part of normal delivery, under their own privacy policies. That connection only fetches app code and fonts — it never carries your document or your scan history.</p>
+
+        <h3>Security</h3>
+        <p>Because your documents and history never leave your device, there's no central database of user content for us to lose or for an attacker to breach in the first place. Nijata is delivered to your browser over an encrypted HTTPS connection. If we ever became aware of a security incident affecting the app's own code or delivery, we'd disclose it here and update the date at the top of this page.</p>
+
+        <h3>Teens &amp; children's privacy</h3>
+        <p>Nijata is designed with younger users in mind, and it's built to need as little personal information as possible — there's no sign-up, no profile, and no document or history ever leaves your device. We don't knowingly collect personal information from children. If you're a parent or guardian and have questions about your child's use of Nijata, contact us below and we're happy to help.</p>
+
+        <h3>Your rights &amp; choices</h3>
+        <p>Because everything happens on your device, you're always in control, and you have the right to access, review, or delete your local scan history at any time — you can opt out of keeping any history at all by clearing it after each scan, straight from the Dashboard, or by clearing your browser's site data for Nijata. Since Nijata doesn't hold personal data on a server, most GDPR (EU/UK) and CCPA (California) data-subject request mechanics simply don't apply to us — but if you're covered by those laws and still have a question, contact us below and we'll help however we can. Simply closing the tab clears anything else held only in memory for that session.</p>
+
+        <h3>Changes to this policy</h3>
+        <p>If this policy changes, we'll update the date at the top of this page. We'll never make our privacy protections weaker without telling you first.</p>
+
+        <h3>Contact us</h3>
+        <p>Questions, feedback, or a parent/guardian inquiry? Email <strong>noreply@nijata.com</strong>. For how these terms work more broadly, see our <a href="#" id="privacy-to-terms-link">Terms &amp; Conditions</a>.</p>
+      </div>
+    </div>
+  </section>
+
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  if (window.pdfjsLib) {
+    pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+  }
+
+  /* ============================================================
+     ANALYSIS ENGINE
+     Rule-based, on-device, keyword + extractive sentence scoring.
+     No network calls, no API keys — this is what "free AI" means
+     here: a deterministic reading engine tuned to privacy text.
+     Unchanged from the prior version — only the UI layer below
+     was redesigned.
+     ============================================================ */
+
+  // Frozen so a bug elsewhere in the file (or a future edit) can't
+  // accidentally mutate the shared keyword tables at runtime — the
+  // scoring logic only ever reads from these.
+  const CATEGORIES = Object.freeze([
+    {
+      key: "collected",
+      label: "Data Collected",
+      icon: "database",
+      keywords: [
+        ["personal information", "your personal details"],
+        ["personal data", "your personal data"],
+        ["location data", "your precise location"],
+        ["your location", "your location"],
+        ["device information", "your device and browser details"],
+        ["device identifier", "your device ID"],
+        ["ip address", "your IP address"],
+        ["browsing history", "your browsing activity"],
+        ["usage data", "how you use the service"],
+        ["biometric", "biometric data (face, fingerprint or voice)"],
+        ["payment information", "your payment details"],
+        ["credit card", "your card details"],
+        ["contact list", "your contacts"],
+        ["email address", "your email address"],
+        ["phone number", "your phone number"],
+        ["microphone", "audio from your microphone"],
+        ["camera", "your camera"],
+        ["health information", "health-related information"],
+        ["financial information", "your financial information"]
+      ]
+    },
+    {
+      key: "shared",
+      label: "Shared With",
+      icon: "share",
+      keywords: [
+        ["third part", "outside companies ('third parties')"],
+        ["affiliate", "its affiliated companies"],
+        ["service provider", "outside vendors who run parts of the service"],
+        ["advertising partner", "advertising partners"],
+        ["advertiser", "advertisers"],
+        ["business partner", "business partners"],
+        ["sell your", "buyers — this policy allows selling your data"],
+        ["sale of personal information", "buyers — it describes a 'sale' of personal information"],
+        ["law enforcement", "government or law-enforcement requests"],
+        ["government authorit", "government authorities"],
+        ["merger", "a new owner if the company is acquired or merged"],
+        ["acquisition", "a new owner in an acquisition"],
+        ["business transfer", "a new owner in a business transfer"]
+      ]
+    },
+    {
+      key: "tracking",
+      label: "Tracking & Cookies",
+      icon: "eye",
+      keywords: [
+        ["cookies", "cookies"],
+        ["web beacon", "tracking pixels / web beacons"],
+        ["pixel tag", "tracking pixels"],
+        ["analytics", "analytics tools"],
+        ["targeted advertising", "ads targeted using your activity"],
+        ["interest-based advertising", "interest-based advertising"],
+        ["cross-site", "tracking across other sites"],
+        ["cross-device", "tracking across your devices"],
+        ["advertising id", "your advertising ID"],
+        ["fingerprint", "device fingerprinting"],
+        ["do not track", "a 'Do Not Track' signal mention"]
+      ]
+    },
+    {
+      key: "retention",
+      label: "Retention",
+      icon: "clock",
+      keywords: [
+        ["as long as necessary", "kept for as long as they decide is 'necessary'"],
+        ["as long as we", "kept for as long as they decide"],
+        ["retention period", "kept for a defined retention period"],
+        ["indefinitely", "kept indefinitely"],
+        ["retain your", "your data is retained after you stop using it"],
+        ["delete your data", "deleted on request or account closure"],
+        ["backup", "kept in backups even after deletion"]
+      ]
+    },
+    {
+      key: "rights",
+      label: "Your Rights",
+      icon: "key",
+      keywords: [
+        ["right to access", "request a copy of your data"],
+        ["right to delete", "ask them to delete your data"],
+        ["right to erasure", "ask them to erase your data"],
+        ["opt out", "opt out of certain uses of your data"],
+        ["opt-out", "opt out of certain uses of your data"],
+        ["gdpr", "GDPR rights, if you're in the EU/UK"],
+        ["ccpa", "CCPA rights, if you're a California resident"],
+        ["california consumer", "California privacy rights"],
+        ["unsubscribe", "unsubscribe from marketing messages"],
+        ["withdraw consent", "withdraw consent at any time"],
+        ["data portability", "request your data in a portable format"]
+      ]
+    },
+    {
+      key: "security",
+      label: "Security",
+      icon: "shield",
+      keywords: [
+        ["encrypt", "encryption of your data"],
+        ["secure socket", "secure connections (SSL/TLS)"],
+        ["ssl", "secure connections (SSL)"],
+        ["security measures", "general security safeguards"],
+        ["safeguard", "safeguards to protect your data"],
+        ["data breach", "a data breach notification process"],
+        ["security incident", "a security incident response process"],
+        ["two-factor", "two-factor authentication support"]
+      ]
+    }
+  ]);
+
+  const RED_FLAGS = Object.freeze([
+    ["we may sell", "May sell your personal data to others"],
+    ["sale of personal information", "Describes a 'sale' of your personal information"],
+    ["arbitration", "Forces disputes into arbitration instead of court"],
+    ["class action waiver", "Blocks you from joining a class action lawsuit"],
+    ["waive your right", "Asks you to waive certain legal rights"],
+    ["without notice", "Can change the terms without telling you first"],
+    ["at any time without", "Can change or end the service at any time without notice"],
+    ["sole discretion", "Gives itself broad, one-sided ('sole discretion') powers"],
+    ["as is", "Provides the service 'as is', with no guarantees"],
+    ["no warrant", "Disclaims warranties on how the service performs"],
+    ["not liable", "Limits its liability to you heavily"],
+    ["limitation of liability", "Caps what you can recover if something goes wrong"],
+    ["indemnify", "Requires you to cover its legal costs in some disputes"],
+    ["international transfer", "Moves your data across international borders"],
+    ["outside the country", "May move your data outside your country"],
+    ["children under 13", "Ambiguous protections for children's data"],
+    ["automatically renew", "Auto-renews and may be hard to cancel"],
+    ["perpetual, irrevocable", "Claims a broad, permanent license to your content"],
+    ["royalty-free, worldwide", "Takes a broad worldwide license to what you upload"]
+  ]);
+
+  // A03/A08 hardening: cap the amount of text we ever run regex/keyword
+  // scans over. This bounds worst-case CPU time against a hostile or
+  // pathologically large document (resource-exhaustion / DoS defense),
+  // independent of the upstream file-size and PDF-page-count caps.
+  const MAX_ANALYZE_CHARS = 400000;
+
+  function splitSentences(text){
+    text = text.replace(/\s+/g, " ").trim();
+    if (text.length > MAX_ANALYZE_CHARS) text = text.slice(0, MAX_ANALYZE_CHARS);
+    // Linear-time pattern (no nested/overlapping quantifiers) — safe
+    // against ReDoS/catastrophic backtracking on adversarial input.
+    const raw = text.match(/[^.!?]+[.!?]+(?=\s|$)/g) || (text ? [text] : []);
+    return raw.map(s => s.trim()).filter(s => s.length > 20 && s.length < 500);
+  }
+
+  function analyze(rawText){
+    const sentences = splitSentences(rawText);
+    const wordCount = (rawText.match(/\S+/g) || []).length;
+
+    const catResults = CATEGORIES.map(cat => {
+      const hitPhrases = new Set();
+      let bestSentence = null;
+      let bestScore = 0;
+
+      sentences.forEach(sentence => {
+        const lower = sentence.toLowerCase();
+        let score = 0;
+        cat.keywords.forEach(([kw, phrase]) => {
+          if (lower.indexOf(kw) !== -1){
+            score++;
+            hitPhrases.add(phrase);
+          }
+        });
+        if (score > bestScore){
+          bestScore = score;
+          bestSentence = sentence;
+        }
+      });
+
+      return {
+        key: cat.key,
+        label: cat.label,
+        icon: cat.icon,
+        found: hitPhrases.size > 0,
+        phrases: Array.from(hitPhrases).slice(0, 4),
+        evidence: bestSentence
+      };
+    });
+
+    const flagHits = [];
+    const flagSeen = new Set();
+    sentences.forEach(sentence => {
+      const lower = sentence.toLowerCase();
+      RED_FLAGS.forEach(([kw, phrase]) => {
+        if (lower.indexOf(kw) !== -1 && !flagSeen.has(phrase)){
+          flagSeen.add(phrase);
+          flagHits.push({ phrase, evidence: sentence });
+        }
+      });
+    });
+
+    let riskScore = flagHits.length;
+    const rightsFound = catResults.find(c => c.key === "rights").found;
+    const securityFound = catResults.find(c => c.key === "security").found;
+    if (!rightsFound) riskScore += 1;
+    if (!securityFound) riskScore += 1;
+
+    let risk = "low";
+    if (riskScore >= 6) risk = "high";
+    else if (riskScore >= 3) risk = "moderate";
+
+    return { sentences, wordCount, catResults, flagHits, risk, riskScore, rightsFound, securityFound };
+  }
+
+  function buildGist(filenameLabel, result){
+    const byKey = k => result.catResults.find(c => c.key === k) || { found: false, phrases: [] };
+    const collected = byKey("collected");
+    const shared = byKey("shared");
+    const rights = byKey("rights");
+
+    const p1 = collected.found
+      ? `It collects ${listify(collected.phrases)}.`
+      : `It doesn't clearly spell out what data is collected.`;
+
+    let sellsData = result.flagHits.some(f => /sell/i.test(f.phrase));
+    const p2 = shared.found
+      ? `Your data can be shared with ${listify(shared.phrases)}${sellsData ? ", and it may be sold" : ""}.`
+      : `It doesn't clearly say who your data is shared with.`;
+
+    const p3 = rights.found
+      ? `You do have some control — you can ${listify(rights.phrases)}.`
+      : `There's no clear way to access, delete, or opt out of your data here.`;
+
+    return [p1, p2, p3];
+  }
+
+  function listify(arr){
+    if (arr.length === 0) return "unspecified data";
+    if (arr.length === 1) return arr[0];
+    if (arr.length === 2) return arr[0] + " and " + arr[1];
+    return arr.slice(0, -1).join(", ") + ", and " + arr[arr.length - 1];
+  }
+
+  /* ============================================================
+     FILE READING
+     ============================================================ */
+
+  // A03/A08 hardening: explicit allowlist, checked on BOTH the file
+  // extension and the browser-reported MIME type, rather than trusting
+  // either alone (a renamed .exe with a spoofed .txt-like type, or a
+  // file served with a misleading Content-Type, is rejected if the two
+  // don't agree with a known-good combination). This is an input
+  // validation control, not a content-safety guarantee — the file is
+  // never executed or rendered as markup, only parsed for text, so the
+  // main risk it closes is processing something unexpected/oversized.
+  const ALLOWED_TYPES = {
+    txt:  ["text/plain", ""],
+    pdf:  ["application/pdf", ""],
+    docx: ["application/vnd.openxmlformats-officedocument.wordprocessingml.document", ""]
+  };
+
+  function safeExt(filename){
+    const parts = String(filename || "").toLowerCase().split(".");
+    return parts.length > 1 ? parts.pop() : "";
+  }
+
+  // Strip control characters and clamp length before any extracted
+  // filename is ever shown in the UI — defense in depth alongside the
+  // textContent-only rendering used everywhere this value is displayed.
+  function sanitizeLabel(label){
+    return String(label || "")
+      .replace(/[\x00-\x1F\x7F]/g, "")
+      .slice(0, 180);
+  }
+
+  async function readFile(file){
+    const name = sanitizeLabel(file.name);
+    const ext = safeExt(name);
+
+    if (!ALLOWED_TYPES[ext] || ALLOWED_TYPES[ext].indexOf(file.type) === -1){
+      throw new Error("Unsupported file type. Try a .pdf, .docx or .txt file — or paste the text instead.");
+    }
+
+    if (ext === "txt"){
+      return await file.text();
+    }
+    if (ext === "pdf"){
+      return await readPdf(file);
+    }
+    if (ext === "docx"){
+      return await readDocx(file);
+    }
+    throw new Error("Unsupported file type. Try a .pdf, .docx or .txt file — or paste the text instead.");
+  }
+
+  async function readPdf(file){
+    if (!window.pdfjsLib) throw new Error("PDF reader failed to load. Try pasting the text instead.");
+    const buf = await file.arrayBuffer();
+    const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
+    let text = "";
+    const maxPages = Math.min(pdf.numPages, 120);
+    for (let i = 1; i <= maxPages; i++){
+      const page = await pdf.getPage(i);
+      const content = await page.getTextContent();
+      text += content.items.map(it => it.str).join(" ") + " ";
+    }
+    if (!text.trim()) throw new Error("Couldn't find readable text in that PDF (it may be scanned). Try pasting the text instead.");
+    return text;
+  }
+
+  async function readDocx(file){
+    if (!window.mammoth) throw new Error("DOCX reader failed to load. Try pasting the text instead.");
+    const buf = await file.arrayBuffer();
+    const out = await mammoth.extractRawText({ arrayBuffer: buf });
+    return out.value || "";
+  }
+
+  /* ============================================================
+     ICONS
+     Trusted, static, self-authored SVG markup — never concatenated
+     with document- or user-derived text, so these are inserted via
+     innerHTML directly (no escaping needed; nothing here comes from
+     the uploaded file). Keep it that way if you add more.
+     ============================================================ */
+  const CAT_ICONS = {
+    database: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/><path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/></svg>',
+    share:    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="6" r="2.5"/><circle cx="18" cy="18" r="2.5"/><path d="M8.2 10.8 15.8 7M8.2 13.2l7.6 3.8"/></svg>',
+    eye:      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>',
+    clock:    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg>',
+    key:      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="7.5" cy="15.5" r="4.5"/><path d="M10.8 12.2 20 3M16 7l3 3M13 10l3 3"/></svg>',
+    shield:   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 5 6v6c0 5 3 8.5 7 9 4-.5 7-4 7-9V6z"/><path d="M9 12l2 2 4-4"/></svg>'
+  };
+
+  /* ============================================================
+     UI WIRING
+     ============================================================ */
+
+  const screens = {
+    upload: document.getElementById("screen-upload"),
+    scanning: document.getElementById("screen-scanning"),
+    report: document.getElementById("screen-report"),
+    history: document.getElementById("screen-history"),
+    terms: document.getElementById("screen-terms"),
+    privacy: document.getElementById("screen-privacy")
+  };
+  let screenBeforeLegal = "upload";
+  function showScreen(name){
+    Object.values(screens).forEach(s => s.classList.remove("active"));
+    screens[name].classList.add("active");
+  }
+
+  // Terms & Privacy are reachable from the fine print and always return
+  // to whichever screen (upload or report) the user came from.
+  function currentScreenName(){
+    return Object.keys(screens).find(k => screens[k].classList.contains("active")) || "upload";
+  }
+  document.getElementById("link-terms").addEventListener("click", () => {
+    screenBeforeLegal = currentScreenName();
+    showScreen("terms");
+  });
+  document.getElementById("link-privacy").addEventListener("click", () => {
+    screenBeforeLegal = currentScreenName();
+    showScreen("privacy");
+  });
+  document.getElementById("terms-back-btn").addEventListener("click", () => showScreen(screenBeforeLegal));
+  document.getElementById("privacy-back-btn").addEventListener("click", () => showScreen(screenBeforeLegal));
+
+  // Cross-links between the two legal documents (each keeps its own
+  // "back" destination pointing at whatever screen was active before
+  // the FIRST legal screen was opened, so hopping between Terms and
+  // Privacy and then hitting back returns to the app, not to each other).
+  function crossLink(id, target){
+    const el = document.getElementById(id);
+    if (el) el.addEventListener("click", ev => {
+      ev.preventDefault();
+      showScreen(target);
+    });
+  }
+  crossLink("terms-to-privacy-link", "privacy");
+  crossLink("terms-to-privacy-link-2", "privacy");
+  crossLink("privacy-to-terms-link", "terms");
+
+  const dropzone = document.getElementById("dropzone");
+  const fileInput = document.getElementById("file-input");
+  const errorMsg = document.getElementById("error-msg");
+  const tabUpload = document.getElementById("tab-upload");
+  const tabPaste = document.getElementById("tab-paste");
+  const panelUpload = document.getElementById("panel-upload");
+  const panelPaste = document.getElementById("panel-paste");
+  const pasteText = document.getElementById("paste-text");
+  const analyzePasteBtn = document.getElementById("analyze-paste-btn");
+  const scanStatus = document.getElementById("scan-status");
+  const deviceCountWrap = document.getElementById("device-count");
+  const deviceCountText = document.getElementById("device-count-text");
+
+  /* ------------------------------------------------------------
+     DEVICE-LOCAL SCAN COUNTER
+     "How many people have used this" would need a server to tally
+     across everyone — this app deliberately has none, so nothing
+     you upload ever leaves the device. What we CAN honestly show
+     is how many scans have run on *this* device/browser, stored as
+     a single number in localStorage (never document content, never
+     sent anywhere). Wrapped in try/catch because storage can be
+     blocked (private browsing, locked-down embeds) — the app must
+     keep working even if the counter can't persist.
+     ------------------------------------------------------------ */
+  const SCAN_COUNT_KEY = "nijata_scan_count";
+
+  function getScanCount(){
+    try{ return parseInt(localStorage.getItem(SCAN_COUNT_KEY), 10) || 0; }
+    catch(e){ return 0; }
+  }
+  function bumpScanCount(){
+    try{
+      const n = getScanCount() + 1;
+      localStorage.setItem(SCAN_COUNT_KEY, String(n));
+      return n;
+    } catch(e){ return null; }
+  }
+  function renderDeviceCount(){
+    const n = getScanCount();
+    if (n > 0){
+      deviceCountText.textContent = n === 1 ? "1 scan completed on this device" : n.toLocaleString() + " scans completed on this device";
+      deviceCountWrap.classList.add("active");
+    } else {
+      deviceCountWrap.classList.remove("active");
+    }
+  }
+  renderDeviceCount();
+
+  function showError(msg){
+    errorMsg.textContent = msg;
+    errorMsg.classList.add("active");
+  }
+  function clearError(){
+    errorMsg.classList.remove("active");
+    errorMsg.textContent = "";
+  }
+
+  function setTab(which){
+    const uploadActive = which === "upload";
+    tabUpload.classList.toggle("active", uploadActive);
+    tabPaste.classList.toggle("active", !uploadActive);
+    tabUpload.setAttribute("aria-selected", String(uploadActive));
+    tabPaste.setAttribute("aria-selected", String(!uploadActive));
+    panelUpload.classList.toggle("active", uploadActive);
+    panelPaste.classList.toggle("active", !uploadActive);
+    clearError();
+  }
+  tabUpload.addEventListener("click", () => setTab("upload"));
+  tabPaste.addEventListener("click", () => setTab("paste"));
+
+  dropzone.addEventListener("click", () => fileInput.click());
+  dropzone.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") fileInput.click(); });
+
+  ["dragenter","dragover"].forEach(evt => {
+    dropzone.addEventListener(evt, e => { e.preventDefault(); dropzone.classList.add("drag"); });
+  });
+  ["dragleave","drop"].forEach(evt => {
+    dropzone.addEventListener(evt, e => { e.preventDefault(); dropzone.classList.remove("drag"); });
+  });
+  dropzone.addEventListener("drop", e => {
+    const file = e.dataTransfer.files && e.dataTransfer.files[0];
+    if (file) handleFile(file);
+  });
+  fileInput.addEventListener("change", () => {
+    const file = fileInput.files && fileInput.files[0];
+    if (file) handleFile(file);
+    fileInput.value = "";
+  });
+
+  pasteText.addEventListener("input", () => {
+    analyzePasteBtn.disabled = pasteText.value.trim().length < 40;
+  });
+  analyzePasteBtn.addEventListener("click", () => {
+    clearError();
+    runPipeline(pasteText.value, "Pasted text");
+  });
+
+  async function handleFile(file){
+    clearError();
+    if (file.size > 15 * 1024 * 1024){
+      showError("That file is a bit large (15MB max). Try a smaller file, or paste the text instead.");
+      return;
+    }
+    showScreen("scanning");
+    cycleStatus(["Opening document…", "Extracting text…"]);
+    try{
+      const text = await readFile(file);
+      if (!text || text.trim().length < 40){
+        throw new Error("Couldn't find enough readable text in that file. Try pasting the text instead.");
+      }
+      runPipeline(text, sanitizeLabel(file.name));
+    } catch(err){
+      showScreen("upload");
+      showError(err.message || "Something went wrong reading that file. Try pasting the text instead.");
+    }
+  }
+
+  let statusTimer = null;
+  function cycleStatus(messages){
+    let i = 0;
+    scanStatus.textContent = messages[0];
+    clearInterval(statusTimer);
+    statusTimer = setInterval(() => {
+      i = (i + 1) % messages.length;
+      scanStatus.textContent = messages[i];
+    }, 550);
+  }
+
+  function runPipeline(text, label){
+    showScreen("scanning");
+    cycleStatus(["Reading clauses…", "Checking data practices…", "Weighing the fine print…", "Almost done…"]);
+
+    // Small deliberate delay so the scan reads as an actual pass over
+    // the document, not an instant flash (the analysis itself is fast).
+    setTimeout(() => {
+      let result;
+      try{
+        result = analyze(text);
+      } catch(err){
+        clearInterval(statusTimer);
+        showScreen("upload");
+        showError("Couldn't analyze that text. Try again or paste a shorter excerpt.");
+        return;
+      }
+      clearInterval(statusTimer);
+      bumpScanCount();
+      addHistoryEntry(label, result);
+      renderReport(label, text, result);
+      showScreen("report");
+    }, 1200);
+  }
+
+  /* ============================================================
+     DASHBOARD / SCAN HISTORY (device-local, unified view)
+     Every completed scan is saved as a compact summary — never the
+     full document text — in localStorage, so returning users get a
+     single dashboard of everything they've checked on this device.
+     Wrapped in try/catch throughout: storage can be blocked (private
+     browsing, locked-down embeds), and the app must keep working
+     even if history can't persist.
+     ============================================================ */
+  const HISTORY_KEY = "nijata_scan_history";
+  const HISTORY_SCHEMA_VERSION = 1;
+  const MAX_HISTORY = 30;
+  const RISK_STYLE = {
+    low:      { color: "var(--green)",  bg: "var(--green-dim)"  },
+    moderate: { color: "var(--amber)",  bg: "var(--amber-dim)"  },
+    high:     { color: "var(--red)",    bg: "var(--red-dim)"    }
+  };
+
+  function isValidHistoryEntry(e){
+    // Defensive shape check — history is user-editable via devtools/localStorage,
+    // and the format may change in future versions, so a malformed or tampered
+    // entry is dropped rather than trusted, instead of crashing the dashboard
+    // or the report renderer that consumes it.
+    return !!(e && typeof e === "object" &&
+      e.v === HISTORY_SCHEMA_VERSION &&
+      typeof e.id === "string" &&
+      typeof e.label === "string" &&
+      typeof e.date === "string" &&
+      e.result && typeof e.result === "object" &&
+      typeof e.result.wordCount === "number" &&
+      typeof e.result.risk === "string" &&
+      typeof e.result.riskScore === "number" &&
+      Array.isArray(e.result.catResults) &&
+      Array.isArray(e.result.flagHits));
+  }
+  function loadHistory(){
+    try{
+      const raw = JSON.parse(localStorage.getItem(HISTORY_KEY) || "[]");
+      if (!Array.isArray(raw)) return [];
+      return raw.filter(isValidHistoryEntry).slice(0, MAX_HISTORY);
+    } catch(e){ return []; }
+  }
+  function saveHistory(list){
+    try{ localStorage.setItem(HISTORY_KEY, JSON.stringify(list)); }
+    catch(e){ /* storage unavailable — history just won't persist */ }
+  }
+  function addHistoryEntry(label, result){
+    try{
+      const entry = {
+        v: HISTORY_SCHEMA_VERSION,
+        id: Date.now().toString(36) + Math.random().toString(36).slice(2, 7),
+        label: label,
+        date: new Date().toISOString(),
+        // Only the derived summary is kept — never the raw document text.
+        result: {
+          wordCount: result.wordCount,
+          risk: result.risk,
+          riskScore: result.riskScore,
+          rightsFound: result.rightsFound,
+          securityFound: result.securityFound,
+          catResults: result.catResults,
+          flagHits: result.flagHits
+        }
+      };
+      const list = loadHistory();
+      list.unshift(entry);
+      if (list.length > MAX_HISTORY) list.length = MAX_HISTORY;
+      saveHistory(list);
+    } catch(e){ /* non-fatal — the current report still renders fine */ }
+  }
+  function deleteHistoryEntry(id){
+    saveHistory(loadHistory().filter(e => e.id !== id));
+    renderHistoryScreen();
+  }
+  function clearAllHistory(){
+    saveHistory([]);
+    renderHistoryScreen();
+  }
+  function formatHistoryDate(iso){
+    try{
+      const d = new Date(iso);
+      const now = new Date();
+      if (d.toDateString() === now.toDateString()){
+        return "Today · " + d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+      }
+      const yesterday = new Date(now);
+      yesterday.setDate(now.getDate() - 1);
+      if (d.toDateString() === yesterday.toDateString()) return "Yesterday";
+      return d.toLocaleDateString([], { month: "short", day: "numeric" });
+    } catch(e){ return ""; }
+  }
+
+  function renderHistoryScreen(){
+    const list = loadHistory();
+    const total = list.length;
+    const high = list.filter(e => e.result.risk === "high").length;
+    const low = list.filter(e => e.result.risk === "low").length;
+
+    document.getElementById("hist-stat-total").textContent = total;
+    document.getElementById("hist-stat-high").textContent = high;
+    document.getElementById("hist-stat-low").textContent = low;
+    document.getElementById("history-subtitle").textContent =
+      total === 0 ? "No scans yet" : total + (total === 1 ? " document checked on this device" : " documents checked on this device");
+
+    const emptyCard = document.getElementById("history-empty-card");
+    const listEl = document.getElementById("history-list");
+    const footerActions = document.getElementById("history-footer-actions");
+    listEl.innerHTML = "";
+
+    if (total === 0){
+      emptyCard.style.display = "";
+      footerActions.style.display = "none";
+      return;
+    }
+    emptyCard.style.display = "none";
+    footerActions.style.display = "flex";
+
+    list.forEach(entry => {
+      const style = RISK_STYLE[entry.result.risk] || { color: "var(--text-faint)", bg: "var(--surface-2)" };
+      const row = document.createElement("div");
+      row.className = "history-item";
+      row.innerHTML = `
+        <div class="history-dot" style="background:${style.color}"></div>
+        <div class="history-body">
+          <div class="history-label"></div>
+          <div class="history-meta"></div>
+        </div>
+        <div class="history-risk-tag" style="background:${style.bg}; color:${style.color}"></div>
+        <button class="history-delete" aria-label="Delete this scan">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+        </button>
+      `;
+      // textContent — never HTML — for anything derived from the document.
+      row.querySelector(".history-label").textContent = entry.label;
+      row.querySelector(".history-meta").textContent =
+        formatHistoryDate(entry.date) + " · " + entry.result.wordCount.toLocaleString() + " words · " +
+        entry.result.flagHits.length + (entry.result.flagHits.length === 1 ? " flag" : " flags");
+      row.querySelector(".history-risk-tag").textContent = entry.result.risk.toUpperCase();
+      row.querySelector(".history-delete").addEventListener("click", ev => {
+        ev.stopPropagation();
+        deleteHistoryEntry(entry.id);
+      });
+      row.addEventListener("click", () => {
+        try{
+          renderReport(entry.label, "", entry.result);
+          showScreen("report");
+        } catch(e){
+          showScreen("upload");
+          showError("Couldn't reopen that saved scan — it may be from an older version.");
+        }
+      });
+      listEl.appendChild(row);
+    });
+  }
+
+  document.getElementById("dashboard-btn").addEventListener("click", () => {
+    renderHistoryScreen();
+    showScreen("history");
+  });
+  document.getElementById("history-back-btn").addEventListener("click", () => showScreen("upload"));
+  document.getElementById("clear-history-btn").addEventListener("click", () => {
+    if (confirm("Clear your entire scan history from this device? This can't be undone.")){
+      clearAllHistory();
+    }
+  });
+
+  /* ---------- Render report ---------- */
+
+  const GAUGE_R = 60;
+  const GAUGE_C = 2 * Math.PI * GAUGE_R;
+  const RISK_COLOR = { low: "var(--green)", moderate: "var(--amber)", high: "var(--red)" };
+
+  function renderReport(label, rawText, result){
+    document.getElementById("rep-filename").textContent = label;
+    const readMins = Math.max(1, Math.round(result.wordCount / 220));
+    document.getElementById("rep-stats").textContent =
+      result.wordCount.toLocaleString() + " words · ~" + readMins + " min to read in full";
+
+    const gaugeFill = document.getElementById("gauge-fill");
+    const pct = Math.max(0.06, Math.min(result.riskScore / 8, 1));
+    gaugeFill.style.stroke = RISK_COLOR[result.risk];
+    gaugeFill.style.strokeDasharray = GAUGE_C;
+    gaugeFill.style.strokeDashoffset = GAUGE_C;
+    // Animate in on the next frame so the transition actually plays.
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        gaugeFill.style.strokeDashoffset = GAUGE_C * (1 - pct);
+      });
+    });
+
+    const riskLabelMap = { low: "LOW", moderate: "MODERATE", high: "HIGH" };
+    const riskEl = document.getElementById("gauge-risk");
+    riskEl.textContent = riskLabelMap[result.risk];
+    riskEl.style.color = RISK_COLOR[result.risk];
+
+    const reasonMap = {
+      low: "Few concerning clauses found, and it's reasonably clear about your rights and how it protects your data.",
+      moderate: "A handful of clauses are worth a closer look before you accept.",
+      high: "Multiple clauses here work against you — worth reading closely, or reconsidering."
+    };
+    document.getElementById("risk-reason").textContent = reasonMap[result.risk];
+
+    document.getElementById("stat-words").textContent = result.wordCount >= 1000 ? (result.wordCount/1000).toFixed(1) + "k" : result.wordCount;
+    document.getElementById("stat-time").textContent = readMins + "m";
+    document.getElementById("stat-flags").textContent = result.flagHits.length;
+
+    const gist = buildGist(label, result);
+    document.getElementById("gist-body").innerHTML = gist.map(p => `<p>${escapeHtml(p)}</p>`).join("");
+
+    const flagList = document.getElementById("flag-list");
+    flagList.innerHTML = "";
+    if (result.flagHits.length === 0){
+      flagList.innerHTML = `<div class="no-flags">No major red flags jumped out — still worth a skim of the sections below.</div>`;
+    } else {
+      result.flagHits.forEach(f => {
+        const item = document.createElement("div");
+        item.className = "flag-item";
+        item.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.9 2.7 17a2 2 0 0 0 1.7 3h15.2a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg><span></span>';
+        item.querySelector("span").textContent = f.phrase; // textContent — never HTML — for document-influenced text
+        flagList.appendChild(item);
+      });
+    }
+
+    const catList = document.getElementById("category-list");
+    catList.innerHTML = "";
+    result.catResults.forEach(cat => {
+      const div = document.createElement("div");
+      div.className = "category";
+      const finding = cat.found
+        ? capitalize(listify(cat.phrases))
+        : "Not clearly addressed in this document.";
+      const iconSvg = CAT_ICONS[cat.icon] || "";
+      div.innerHTML = `
+        <div class="cat-row">
+          <div class="cat-icon ${cat.found ? 'found' : ''}">${iconSvg}</div>
+          <div class="cat-body">
+            <div class="cat-title">${escapeHtml(cat.label)}</div>
+            <div class="cat-finding">${escapeHtml(finding)}</div>
+          </div>
+          ${cat.evidence ? '<svg class="cat-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>' : ''}
+        </div>
+        ${cat.evidence ? `<div class="cat-evidence-wrap"><div class="cat-evidence">“${escapeHtml(cat.evidence)}”</div></div>` : ''}
+      `;
+      if (cat.evidence){
+        div.querySelector(".cat-row").addEventListener("click", () => {
+          div.classList.toggle("open");
+        });
+      }
+      catList.appendChild(div);
+    });
+
+    window.__nijataSummary = buildCopySummary(label, result, gist);
+  }
+
+  function buildCopySummary(label, result, gist){
+    let lines = [];
+    lines.push("NIJATA — Privacy Read: " + label);
+    lines.push("Risk: " + result.risk.toUpperCase());
+    lines.push("");
+    lines.push("THE GIST");
+    gist.forEach(p => lines.push("- " + p));
+    lines.push("");
+    lines.push("RED FLAGS");
+    if (result.flagHits.length === 0) lines.push("- None found");
+    else result.flagHits.forEach(f => lines.push("- " + f.phrase));
+    lines.push("");
+    result.catResults.forEach(cat => {
+      lines.push(cat.label.toUpperCase() + ": " + (cat.found ? listify(cat.phrases) : "Not clearly addressed."));
+    });
+    return lines.join("\n");
+  }
+
+  function capitalize(s){ return s.charAt(0).toUpperCase() + s.slice(1); }
+
+  // OUTPUT ENCODING (A03 Injection / XSS defense):
+  // Every string that originates from the user's uploaded document —
+  // extracted sentences (cat.evidence), and anything built from them —
+  // is passed through this before it is ever concatenated into an
+  // innerHTML template. Values that are static/internal (category
+  // labels, our own keyword-derived phrases) are escaped too, as
+  // defense in depth, even though they don't come from the document.
+  // Everywhere else in this file that displays document-derived text
+  // (filename, word counts, stats, red-flag phrases) uses .textContent
+  // instead of innerHTML, which never interprets its input as markup
+  // at all — that's the stronger guarantee and is preferred wherever
+  // the DOM structure doesn't require inline HTML.
+  function escapeHtml(s){
+    return String(s).replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
+  }
+
+  document.getElementById("new-scan-btn").addEventListener("click", resetToUpload);
+  document.getElementById("rescan-btn").addEventListener("click", resetToUpload);
+  function resetToUpload(){
+    pasteText.value = "";
+    analyzePasteBtn.disabled = true;
+    setTab("upload");
+    clearError();
+    renderDeviceCount();
+    showScreen("upload");
+  }
+
+  document.getElementById("copy-btn").addEventListener("click", async () => {
+    const btn = document.getElementById("copy-btn");
+    try{
+      await navigator.clipboard.writeText(window.__nijataSummary || "");
+      const old = btn.textContent;
+      btn.textContent = "Copied ✓";
+      setTimeout(() => btn.textContent = old, 1400);
+    } catch(e){
+      btn.textContent = "Couldn't copy";
+      setTimeout(() => btn.textContent = "Copy summary", 1400);
+    }
+  });
+
+})();
+</script>
+</body>
+</html>
