@@ -92,7 +92,15 @@
       "name": "Does Nijata upload or store the documents a business scans?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "No. Documents are read and analyzed entirely on-device in the browser and are never uploaded to a server. Nijata keeps a private, on-device history of past scan summaries — risk level, word count, flagged phrases — so you can revisit them, but never the full document text, and nothing is transmitted anywhere."
+        "text": "No. Documents, images, and scanned pages are read and analyzed entirely on-device in the browser — including OCR, which also runs on-device — and are never uploaded to a server. Nijata keeps a private, on-device history of past scan summaries — risk level, word count, flagged phrases — so you can revisit them, but never the full document text, and nothing is transmitted anywhere."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Does analyzing a policy by URL send my data anywhere?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "The URL itself does, since a browser can't normally load another site's page directly: Nijata sends the address you enter to a public reader service that fetches the page and returns its text. That's the one input method that isn't fully on-device — file uploads, pasted text, and OCR'd images never leave your device. If you'd rather keep everything local, use Upload file or Paste text instead."
       }
     },
     {
@@ -111,17 +119,32 @@
   ============================================================
   OWASP SECURE CODING NOTES (read before deploying standalone)
   ============================================================
-  This app is 100% client-side and makes no network calls of its
-  own (no backend, no telemetry, no upload of document content).
-  The only local storage it uses is: a single integer scan counter
+  This app is primarily client-side and, for file/paste input, makes
+  no network calls of its own (no backend, no telemetry, no upload of
+  document content). Two features are deliberate, disclosed exceptions
+  to that, added so the app can also take a policy by URL and OCR
+  scanned/image documents:
+
+    - "From URL" fetches the page you point it at via r.jina.ai, a
+      public reader service — see connect-src below and the in-app
+      disclosure next to the URL field. This is the one path where
+      something (the URL, and the resulting page text) leaves the
+      device before analysis. It never touches file uploads, pasted
+      text, or your local scan history.
+    - OCR (for images and scanned PDFs) runs Tesseract.js entirely
+      client-side via WebAssembly. The IMAGE CONTENT never leaves the
+      device — only the one-time OCR engine + language-data download
+      comes from jsDelivr's CDN on first use, same trust model as the
+      pdf.js/mammoth libraries already loaded below.
+
+  The only local storage used is: a single integer scan counter
   (SCAN_COUNT_KEY) and a capped, on-device scan history (see
   HISTORY_KEY / addHistoryEntry) that stores derived summaries only
   — risk level, word count, flagged phrases — never the full
   document text, and never transmitted anywhere. That removes most of the
   OWASP Top 10 (A01 Broken Access Control, A02 Crypto Failures on
-  data-at-rest, A03 Injection via SQL/NoSQL/LDAP, A05 SSRF) as
-  non-applicable by design. What remains, and what this file
-  addresses:
+  data-at-rest, A03 Injection via SQL/NoSQL/LDAP) as non-applicable
+  by design. What remains, and what this file addresses:
 
     A03 Injection (XSS)     -> every value derived from the
                                 user's uploaded document is passed
@@ -134,27 +157,49 @@
                                 script/style/font/connections, and
                                 block framing/plugins/base-uri
                                 rebinding.
+    A05 SSRF (client-side)  -> the URL field lets a user point this
+                                page at an arbitrary address, which
+                                the reader service (not this app)
+                                then fetches server-side. Because
+                                the result is only ever displayed
+                                back to and stored locally by the
+                                same user who typed the URL, there's
+                                no cross-user exfiltration path —
+                                but be aware this is a real, if low-
+                                severity, request-forgery surface if
+                                you embed this app somewhere with
+                                access to internal/intranet URLs a
+                                user shouldn't be able to reach.
     A06 Vulnerable/Outdated
-        Components           -> pdf.js and mammoth are pinned to
-                                exact versions (not @latest). If
-                                you deploy this yourself, ADD A
-                                REAL SUBRESOURCE INTEGRITY HASH to
-                                the two <script> tags below. Do not
-                                invent a hash — an incorrect one
-                                just breaks loading. Generate the
-                                real value yourself and paste it in:
+        Components           -> pdf.js, mammoth, and tesseract.js
+                                are pinned to exact versions (not
+                                @latest). If you deploy this
+                                yourself, ADD A REAL SUBRESOURCE
+                                INTEGRITY HASH to the <script> tags
+                                below. Do not invent a hash — an
+                                incorrect one just breaks loading.
+                                Generate the real value yourself and
+                                paste it in:
                                   curl -s <script-url> | openssl dgst -sha384 -binary | openssl base64 -A
                                 then prefix the output with "sha384-"
                                 and set it as the integrity="" attribute,
                                 alongside crossorigin="anonymous" (already
-                                present). Re-run this whenever the pinned
-                                version number changes.
+                                present). Re-run this whenever a pinned
+                                version number changes. Tesseract.js is
+                                loaded lazily via a dynamically-injected
+                                <script> tag (only when OCR is actually
+                                needed) rather than statically here —
+                                if you add a static integrity hash for
+                                pdf.js/mammoth, do the same in
+                                loadTesseract() below for consistency.
     A08 Software/Data
         Integrity Failures    -> see SRI note above; also see
                                 MAX_CHARS / MAX file size guards
                                 against a hostile huge input.
     A04/A09 Resource
-        exhaustion (DoS)      -> file-size cap, PDF page cap, and
+        exhaustion (DoS)      -> file-size cap, PDF page cap, OCR
+                                page cap (OCR is far more expensive
+                                per page than text extraction), and
                                 a hard character cap on extracted
                                 text before it's ever run through
                                 the sentence-splitting regex, so a
@@ -170,12 +215,12 @@
 -->
 <meta http-equiv="Content-Security-Policy" content="
   default-src 'none';
-  script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com;
-  worker-src 'self' blob: https://cdnjs.cloudflare.com;
+  script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net;
+  worker-src 'self' blob: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net;
   style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
   font-src https://fonts.gstatic.com;
-  img-src 'self' data:;
-  connect-src 'self';
+  img-src 'self' data: blob:;
+  connect-src 'self' https://cdn.jsdelivr.net https://r.jina.ai;
   object-src 'none';
   base-uri 'none';
   form-action 'none';
@@ -422,10 +467,13 @@
     color:var(--text-dim);
     font-family:var(--font-display);
     font-weight:600;
-    font-size:13.5px;
-    padding:9px 10px;
+    font-size:12.5px;
+    padding:9px 6px;
     border-radius:999px;
     cursor:pointer;
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
     transition: color .15s ease, background .15s ease;
   }
   .tab.active{ background:var(--surface-3); color:var(--text); box-shadow: 0 1px 0 rgba(255,255,255,0.04) inset; }
@@ -456,7 +504,12 @@
   }
   .dz-icon svg{ width:24px; height:24px; color:var(--accent); }
   .dz-title{ font-weight:600; font-size:15.5px; margin-bottom:12px; }
-  .dz-formats{ display:flex; gap:6px; justify-content:center; }
+  .dz-formats{ display:flex; gap:6px; justify-content:center; flex-wrap:wrap; }
+  .dz-ocr-note{
+    font-size:11.5px;
+    color:var(--text-faint);
+    margin-top:12px;
+  }
   .chip{
     font-family:var(--font-mono);
     font-size:10px;
@@ -484,6 +537,32 @@
   }
   .paste-box textarea::placeholder{ color:var(--text-faint); }
   .paste-box textarea:focus{ outline:none; border-color:var(--accent); }
+
+  .url-box input[type="url"]{
+    width:100%;
+    font-family:var(--font-display);
+    font-size:14.5px;
+    padding:13px;
+    border:1px solid var(--border);
+    border-radius:var(--r-md);
+    background:var(--surface-2);
+    color:var(--text);
+  }
+  .url-box input[type="url"]::placeholder{ color:var(--text-faint); }
+  .url-box input[type="url"]:focus{ outline:none; border-color:var(--accent); }
+  .url-note{
+    display:flex;
+    gap:9px;
+    align-items:flex-start;
+    font-size:12px;
+    line-height:1.5;
+    color:var(--text-dim);
+    background:var(--accent-dim);
+    border-radius:var(--r-sm);
+    padding:11px 12px;
+    margin-top:10px;
+  }
+  .url-note svg{ width:15px; height:15px; color:var(--accent); flex-shrink:0; margin-top:1px; }
 
   .primary-btn{
     margin-top:12px;
@@ -971,6 +1050,7 @@
         <div class="tabs" role="tablist">
           <button class="tab active" id="tab-upload" role="tab" aria-selected="true">Upload file</button>
           <button class="tab" id="tab-paste" role="tab" aria-selected="false">Paste text</button>
+          <button class="tab" id="tab-url" role="tab" aria-selected="false">From URL</button>
         </div>
 
         <div class="tab-panel active" id="panel-upload">
@@ -980,15 +1060,25 @@
             </div>
             <div class="dz-title">Drop file, or tap to choose</div>
             <div class="dz-formats">
-              <span class="chip">PDF</span><span class="chip">DOCX</span><span class="chip">TXT</span>
+              <span class="chip">PDF</span><span class="chip">DOCX</span><span class="chip">TXT</span><span class="chip">JPG</span><span class="chip">PNG</span>
             </div>
+            <div class="dz-ocr-note">Scanned or photographed pages are read with on-device OCR.</div>
           </div>
-          <input type="file" id="file-input" accept=".pdf,.docx,.txt,text/plain,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
+          <input type="file" id="file-input" accept=".pdf,.docx,.txt,.png,.jpg,.jpeg,.webp,text/plain,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/png,image/jpeg,image/webp">
         </div>
 
         <div class="tab-panel paste-box" id="panel-paste">
           <textarea id="paste-text" maxlength="400000" placeholder="Paste the privacy policy or terms & conditions text here…"></textarea>
           <button class="primary-btn" id="analyze-paste-btn" disabled>Analyze pasted text</button>
+        </div>
+
+        <div class="tab-panel url-box" id="panel-url">
+          <input type="url" id="url-input" inputmode="url" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="https://example.com/privacy-policy">
+          <div class="url-note">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4M12 17h.01"/><circle cx="12" cy="12" r="9"/></svg>
+            <span>The only input method that isn't fully on-device: the address is sent to a public reader service to fetch the page as text. Nothing else about your device or history is shared. Prefer to stay fully local? Paste the text instead.</span>
+          </div>
+          <button class="primary-btn" id="analyze-url-btn" disabled>Fetch &amp; analyze</button>
         </div>
       </div>
     </div>
@@ -1001,7 +1091,7 @@
     </div>
 
     <div class="fine-print">
-      Everything runs on your device. Your documents are never sent anywhere — only a private, on-device history is kept so you can revisit past scans. This is an automated read, not legal advice.
+      Everything runs on your device, except an optional link fetch (see the URL tab). Your files and pasted text are never sent anywhere — only a private, on-device history is kept so you can revisit past scans. This is an automated read, not legal advice.
       <div class="legal-links">
         <button class="legal-link" id="link-terms">Terms &amp; Conditions</button>
         <span class="legal-sep">·</span>
@@ -1021,7 +1111,11 @@
       </details>
       <details class="faq-item">
         <summary>Does Nijata upload or store the documents a business scans?</summary>
-        <p>No. Documents are read and analyzed entirely on-device in the browser and are never uploaded to a server. Nijata keeps a private, on-device history of past scan summaries — risk level, word count, flagged phrases — so you can revisit them, but never the full document text, and nothing is transmitted anywhere.</p>
+        <p>No. Documents, images, and scanned pages are read and analyzed entirely on-device in the browser — including OCR, which also runs on-device — and are never uploaded to a server. Nijata keeps a private, on-device history of past scan summaries — risk level, word count, flagged phrases — so you can revisit them, but never the full document text, and nothing is transmitted anywhere.</p>
+      </details>
+      <details class="faq-item">
+        <summary>Does analyzing a policy by URL send my data anywhere?</summary>
+        <p>The URL itself does, since a browser can't normally load another site's page directly: Nijata sends the address you enter to a public reader service that fetches the page and returns its text. That's the one input method that isn't fully on-device — file uploads, pasted text, and OCR'd images never leave your device. If you'd rather keep everything local, use Upload file or Paste text instead.</p>
       </details>
       <details class="faq-item">
         <summary>Can multiple people on a team share Nijata's scan history?</summary>
@@ -1164,11 +1258,11 @@
         <p>Nijata gives you an automated, plain-language read of a document — it's a study buddy, not a lawyer. It can miss things or get nuance wrong, especially with long or unusually worded documents. Never treat Nijata's output as legal advice, and don't rely on it alone for serious decisions. When something really matters, read the original document or ask a trusted adult or a real lawyer.</p>
 
         <h3>4. How the app works</h3>
-        <p>Nijata reads the file or text you provide entirely on your own device — in your browser, using on-device processing. It doesn't upload your document to a server, and it doesn't need an account to work. For the full picture of what little data Nijata does keep on your device and why, see our <a href="#" id="terms-to-privacy-link">Privacy Policy</a>.</p>
+        <p>Nijata reads a file, pasted text, or a scanned/photographed page you provide entirely on your own device — in your browser, using on-device processing and OCR. It doesn't upload your document or image to a server, and it doesn't need an account to work. The one exception is the optional "From URL" option, which has to contact an external reader service to fetch the page you point it at. For the full picture of what little data Nijata does keep or send, and when, see our <a href="#" id="terms-to-privacy-link">Privacy Policy</a>.</p>
 
         <h3>5. Your responsibilities</h3>
         <ul>
-          <li>Only upload documents you have the right to view and analyze.</li>
+          <li>Only upload, link to, or scan documents you have the right to view and analyze.</li>
           <li>Don't use Nijata to try to break, overload, or reverse-engineer the app.</li>
           <li>Don't use Nijata for anything illegal or to harm someone else.</li>
         </ul>
@@ -1212,29 +1306,32 @@
     <div class="panel-card legal-card">
       <div class="legal-body">
         <h3>The short version</h3>
-        <p>Nijata is built to be private by default. The document you upload or paste is read and analyzed <strong>entirely on your own device</strong>. It is never uploaded, transmitted, or stored on any server we run — we simply don't have a way to see it.</p>
+        <p>Nijata is built to be private by default. A document you upload, paste, or photograph is read and analyzed <strong>entirely on your own device</strong> — including OCR for scanned pages and images, which also runs on-device. It is never uploaded, transmitted, or stored on any server we run — we simply don't have a way to see it. The one exception is the optional "From URL" option, described below, which by its nature has to reach out to fetch the page you point it at.</p>
 
         <h3>What we actually store</h3>
-        <p>Nijata keeps a private scan history on your device so your Dashboard can show every policy you've checked in one place. For each scan, we save the document's name, the date, its risk level, word count, and the flagged phrases and short quotes Nijata found — never the full original document. This all lives in your browser's local storage, is never uploaded, and only your device can see it. You can clear it any time from the Dashboard or by clearing your browser's site data for Nijata.</p>
+        <p>Nijata keeps a private scan history on your device so your Dashboard can show every policy you've checked in one place. For each scan, we save the document's name (or the site's domain, for a URL scan), the date, its risk level, word count, and the flagged phrases and short quotes Nijata found — never the full original document. This all lives in your browser's local storage, is never uploaded, and only your device can see it. You can clear it any time from the Dashboard or by clearing your browser's site data for Nijata.</p>
 
         <h3>What we don't collect</h3>
         <ul>
           <li>We don't create accounts, so we don't collect names, emails, or passwords through the app itself.</li>
-          <li>We don't upload, transmit, or keep a copy of the full documents you scan — only the short summary described above, and only on your device.</li>
+          <li>We don't upload, transmit, or keep a copy of the full documents, images, or pages you scan — only the short summary described above, and only on your device.</li>
           <li>We don't use tracking cookies or sell any data — because we don't have any of your data to sell.</li>
         </ul>
 
+        <h3>Analyzing a link ("From URL")</h3>
+        <p>Typing a web address into the URL tab is the one part of Nijata that isn't fully on-device, because your browser can't normally load another site's page directly to read it. To make this work, the address you enter is sent to r.jina.ai, a public page-reading service, which fetches that page and returns its text back to your browser for analysis — the same way any website works when you visit it, just relayed through that service instead of a browser tab. Only the URL and the resulting page text pass through it; your uploaded files, pasted text, OCR images, and local scan history never do. If you'd rather keep everything strictly on your device, use the "Upload file" or "Paste text" option instead.</p>
+
         <h3>Who we share data with</h3>
-        <p>Nobody. Nijata has no server-side database of your documents or history, so there's nothing to hand to third parties, affiliates, advertising partners, or advertisers. We don't share, rent, or sell your information to anyone, and we've never received a law enforcement request for it — because we have no user data to hand over even if asked.</p>
+        <p>Nobody, for anything you upload, paste, or scan with your camera. Nijata has no server-side database of your documents or history, so there's nothing to hand to third parties, affiliates, advertising partners, or advertisers. We don't share, rent, or sell your information to anyone, and we've never received a law enforcement request for it — because we have no user data to hand over even if asked. The one narrow exception is the URL you choose to type into the "From URL" tab, which is shared only with the reader service described above, and only so it can fetch that one page for you.</p>
 
         <h3>How long we keep it</h3>
-        <p>There's no fixed retention period beyond what sits in your own browser: your local scan history stays on your device only until you delete it or clear your browser's site data — it isn't retained anywhere else, indefinitely or otherwise.</p>
+        <p>There's no fixed retention period beyond what sits in your own browser: your local scan history stays on your device only until you delete it or clear your browser's site data — it isn't retained anywhere else, indefinitely or otherwise. The reader service used for URL fetches doesn't receive anything from us beyond that one request, and we have no way to retrieve or delete data from it because we never had a copy in the first place.</p>
 
         <h3>Loading the app</h3>
-        <p>To load Nijata's fonts and the tools that read PDF and Word files, your browser fetches a few files from Google Fonts and the cdnjs content delivery network. Like any website, those providers may see standard request information (such as your IP address and browser type) as part of normal delivery, under their own privacy policies. That connection only fetches app code and fonts — it never carries your document or your scan history.</p>
+        <p>To load Nijata's fonts and the tools that read PDF, Word, and image files, your browser fetches a few files from Google Fonts, the cdnjs content delivery network, and jsDelivr (for on-device OCR). Like any website, those providers may see standard request information (such as your IP address and browser type) as part of normal delivery, under their own privacy policies. Those connections only fetch app code, fonts, and the OCR engine — never your document, image, or scan history.</p>
 
         <h3>Security</h3>
-        <p>Because your documents and history never leave your device, there's no central database of user content for us to lose or for an attacker to breach in the first place. Nijata is delivered to your browser over an encrypted HTTPS connection. If we ever became aware of a security incident affecting the app's own code or delivery, we'd disclose it here and update the date at the top of this page.</p>
+        <p>Because your documents, images, and history never leave your device, there's no central database of user content for us to lose or for an attacker to breach in the first place. Nijata is delivered to your browser over an encrypted HTTPS connection. If we ever became aware of a security incident affecting the app's own code or delivery, we'd disclose it here and update the date at the top of this page.</p>
 
         <h3>Teens &amp; children's privacy</h3>
         <p>Nijata is designed with younger users in mind, and it's built to need as little personal information as possible — there's no sign-up, no profile, and no document or history ever leaves your device. We don't knowingly collect personal information from children. If you're a parent or guardian and have questions about your child's use of Nijata, contact us below and we're happy to help.</p>
@@ -1522,13 +1619,19 @@
   // file served with a misleading Content-Type, is rejected if the two
   // don't agree with a known-good combination). This is an input
   // validation control, not a content-safety guarantee — the file is
-  // never executed or rendered as markup, only parsed for text, so the
-  // main risk it closes is processing something unexpected/oversized.
+  // never executed or rendered as markup, only parsed (or OCR'd, for
+  // images), so the main risk it closes is processing something
+  // unexpected/oversized.
   const ALLOWED_TYPES = {
     txt:  ["text/plain", ""],
     pdf:  ["application/pdf", ""],
-    docx: ["application/vnd.openxmlformats-officedocument.wordprocessingml.document", ""]
+    docx: ["application/vnd.openxmlformats-officedocument.wordprocessingml.document", ""],
+    png:  ["image/png", ""],
+    jpg:  ["image/jpeg", ""],
+    jpeg: ["image/jpeg", ""],
+    webp: ["image/webp", ""]
   };
+  const IMAGE_EXTS = ["png", "jpg", "jpeg", "webp"];
 
   function safeExt(filename){
     const parts = String(filename || "").toLowerCase().split(".");
@@ -1544,27 +1647,31 @@
       .slice(0, 180);
   }
 
-  async function readFile(file){
+  async function readFile(file, onStatus){
     const name = sanitizeLabel(file.name);
     const ext = safeExt(name);
 
     if (!ALLOWED_TYPES[ext] || ALLOWED_TYPES[ext].indexOf(file.type) === -1){
-      throw new Error("Unsupported file type. Try a .pdf, .docx or .txt file — or paste the text instead.");
+      throw new Error("Unsupported file type. Try a .pdf, .docx, .txt, or image file — or paste the text instead.");
     }
 
     if (ext === "txt"){
       return await file.text();
     }
     if (ext === "pdf"){
-      return await readPdf(file);
+      return await readPdf(file, onStatus);
     }
     if (ext === "docx"){
       return await readDocx(file);
     }
-    throw new Error("Unsupported file type. Try a .pdf, .docx or .txt file — or paste the text instead.");
+    if (IMAGE_EXTS.indexOf(ext) !== -1){
+      if (onStatus) onStatus(["Reading image…", "Running on-device OCR…", "This can take a moment…"]);
+      return await ocrImage(file);
+    }
+    throw new Error("Unsupported file type. Try a .pdf, .docx, .txt, or image file — or paste the text instead.");
   }
 
-  async function readPdf(file){
+  async function readPdf(file, onStatus){
     if (!window.pdfjsLib) throw new Error("PDF reader failed to load. Try pasting the text instead.");
     const buf = await file.arrayBuffer();
     const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
@@ -1575,8 +1682,28 @@
       const content = await page.getTextContent();
       text += content.items.map(it => it.str).join(" ") + " ";
     }
-    if (!text.trim()) throw new Error("Couldn't find readable text in that PDF (it may be scanned). Try pasting the text instead.");
-    return text;
+    if (text.trim().length >= 40) return text;
+
+    // No usable text layer — most likely a scanned/photographed PDF.
+    // Fall back to rendering pages to canvas and OCR'ing them. This is
+    // far more expensive per page than text extraction, so it's capped
+    // much lower (OCR_MAX_PAGES) to bound worst-case runtime on a
+    // hostile or just very long scanned document.
+    if (onStatus) onStatus(["No text layer found…", "Rendering pages for OCR…", "Running on-device OCR…"]);
+    const ocrPages = Math.min(pdf.numPages, OCR_MAX_PAGES);
+    let ocrText = "";
+    for (let i = 1; i <= ocrPages; i++){
+      if (onStatus) onStatus(["Running OCR on page " + i + " of " + ocrPages + "…"]);
+      const page = await pdf.getPage(i);
+      const viewport = page.getViewport({ scale: 2 });
+      const canvas = document.createElement("canvas");
+      canvas.width = viewport.width;
+      canvas.height = viewport.height;
+      await page.render({ canvasContext: canvas.getContext("2d"), viewport }).promise;
+      ocrText += (await ocrCanvas(canvas)) + " ";
+    }
+    if (!ocrText.trim()) throw new Error("Couldn't find readable text in that PDF, even with OCR. Try pasting the text instead.");
+    return ocrText;
   }
 
   async function readDocx(file){
@@ -1584,6 +1711,126 @@
     const buf = await file.arrayBuffer();
     const out = await mammoth.extractRawText({ arrayBuffer: buf });
     return out.value || "";
+  }
+
+  /* ============================================================
+     OCR (on-device, via Tesseract.js / WebAssembly)
+     Loaded lazily — only when an image or a text-less PDF is
+     actually encountered — so the default file/paste/URL flows
+     never pay for this fairly heavy dependency. The IMAGE CONTENT
+     itself is never sent anywhere; only the OCR engine and language
+     data (not your document) are fetched from jsDelivr on first use,
+     same trust model as the pdf.js/mammoth <script> tags above.
+     ============================================================ */
+  const OCR_MAX_PAGES = 15;
+  // Major-version pin (not an exact patch, and not bare "@latest"):
+  // tesseract.js's own docs recommend "@5" for the CDN tag, since an
+  // invented exact patch version that doesn't exist would 404 and
+  // silently break OCR entirely — worse than the small amount of
+  // drift a major-version pin allows within the same stable API.
+  const TESSERACT_VERSION = "5";
+  let tesseractLoadPromise = null;
+  let ocrWorkerPromise = null;
+
+  function loadTesseract(){
+    if (window.Tesseract) return Promise.resolve();
+    if (tesseractLoadPromise) return tesseractLoadPromise;
+    tesseractLoadPromise = new Promise((resolve, reject) => {
+      const script = document.createElement("script");
+      script.src = "https://cdn.jsdelivr.net/npm/tesseract.js@" + TESSERACT_VERSION + "/dist/tesseract.min.js";
+      script.crossOrigin = "anonymous";
+      script.referrerPolicy = "no-referrer";
+      script.onload = () => resolve();
+      script.onerror = () => reject(new Error("OCR engine failed to load. Check your connection, or paste the text instead."));
+      document.head.appendChild(script);
+    });
+    return tesseractLoadPromise;
+  }
+
+  async function getOcrWorker(){
+    if (!ocrWorkerPromise){
+      ocrWorkerPromise = (async () => {
+        await loadTesseract();
+        if (!window.Tesseract) throw new Error("OCR engine failed to load. Try pasting the text instead.");
+        // No explicit workerPath/corePath/langPath override: tesseract.js
+        // resolves all of these against the same jsDelivr CDN by default
+        // (see CSP comment above), and hand-pinning each sub-path risks
+        // guessing a URL that doesn't exist and breaking OCR outright.
+        return await Tesseract.createWorker("eng");
+      })();
+    }
+    return ocrWorkerPromise;
+  }
+
+  async function ocrImage(file){
+    const worker = await getOcrWorker();
+    const { data } = await worker.recognize(file);
+    if (!data || !data.text || !data.text.trim()){
+      throw new Error("Couldn't read any text from that image. Try a clearer photo/scan, or paste the text instead.");
+    }
+    return data.text;
+  }
+
+  async function ocrCanvas(canvas){
+    const worker = await getOcrWorker();
+    const { data } = await worker.recognize(canvas);
+    return (data && data.text) || "";
+  }
+
+  /* ============================================================
+     FETCH BY URL (the one input path that leaves the device)
+     Browsers block cross-origin fetch() of arbitrary third-party
+     pages by default (CORS) — most privacy-policy pages don't opt
+     in to that, so a direct client-side fetch would fail for the
+     large majority of real sites. Instead we route through
+     r.jina.ai, a free, public "URL to plain text" reader service
+     built for exactly this (see CSP connect-src above, and the
+     visible disclosure next to the URL field in the UI — this
+     trade-off is explained to the user before they use it, not
+     hidden). Only the URL and the resulting page text touch that
+     service; file uploads, pasted text, and OCR never do.
+     ============================================================ */
+  const URL_FETCH_MAX_CHARS = 400000; // same order as MAX_ANALYZE_CHARS below
+
+  function normalizeInputUrl(raw){
+    let value = String(raw || "").trim();
+    if (!value) throw new Error("Enter a URL first.");
+    if (!/^https?:\/\//i.test(value)) value = "https://" + value;
+    let parsed;
+    try{ parsed = new URL(value); }
+    catch(e){ throw new Error("That doesn't look like a valid URL."); }
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:"){
+      throw new Error("Only http:// and https:// links are supported.");
+    }
+    return parsed;
+  }
+
+  async function fetchUrlText(rawUrl){
+    const parsed = normalizeInputUrl(rawUrl);
+    let res;
+    try{
+      res = await fetch("https://r.jina.ai/" + parsed.href, {
+        method: "GET",
+        mode: "cors",
+        credentials: "omit",
+        referrerPolicy: "no-referrer"
+      });
+    } catch(e){
+      throw new Error("Couldn't reach that page. This can happen if the site blocks automated fetches, the URL is wrong, or you're offline — try pasting the text instead.");
+    }
+    if (!res.ok){
+      throw new Error("That page came back with an error (HTTP " + res.status + "). Double-check the URL, or paste the text instead.");
+    }
+    let text = await res.text();
+    if (text.length > URL_FETCH_MAX_CHARS) text = text.slice(0, URL_FETCH_MAX_CHARS);
+    // Light cleanup of the reader service's markdown-ish output —
+    // doesn't need to be perfect, splitSentences()/analyze() only need
+    // readable prose, not a faithfully reconstructed document.
+    text = text.replace(/^Title:.*$/im, "").replace(/^URL Source:.*$/im, "").replace(/[#*_`]+/g, "");
+    if (!text.trim() || text.trim().length < 40){
+      throw new Error("Couldn't find enough readable text at that page. Try pasting the text instead.");
+    }
+    return { text, hostname: parsed.hostname };
   }
 
   /* ============================================================
@@ -1656,10 +1903,14 @@
   const errorMsg = document.getElementById("error-msg");
   const tabUpload = document.getElementById("tab-upload");
   const tabPaste = document.getElementById("tab-paste");
+  const tabUrl = document.getElementById("tab-url");
   const panelUpload = document.getElementById("panel-upload");
   const panelPaste = document.getElementById("panel-paste");
+  const panelUrl = document.getElementById("panel-url");
   const pasteText = document.getElementById("paste-text");
   const analyzePasteBtn = document.getElementById("analyze-paste-btn");
+  const urlInput = document.getElementById("url-input");
+  const analyzeUrlBtn = document.getElementById("analyze-url-btn");
   const scanStatus = document.getElementById("scan-status");
   const deviceCountWrap = document.getElementById("device-count");
   const deviceCountText = document.getElementById("device-count-text");
@@ -1708,18 +1959,23 @@
     errorMsg.textContent = "";
   }
 
+  const TABS = {
+    upload: { tab: tabUpload, panel: panelUpload },
+    paste:  { tab: tabPaste,  panel: panelPaste  },
+    url:    { tab: tabUrl,    panel: panelUrl    }
+  };
   function setTab(which){
-    const uploadActive = which === "upload";
-    tabUpload.classList.toggle("active", uploadActive);
-    tabPaste.classList.toggle("active", !uploadActive);
-    tabUpload.setAttribute("aria-selected", String(uploadActive));
-    tabPaste.setAttribute("aria-selected", String(!uploadActive));
-    panelUpload.classList.toggle("active", uploadActive);
-    panelPaste.classList.toggle("active", !uploadActive);
+    Object.entries(TABS).forEach(([key, { tab, panel }]) => {
+      const active = key === which;
+      tab.classList.toggle("active", active);
+      tab.setAttribute("aria-selected", String(active));
+      panel.classList.toggle("active", active);
+    });
     clearError();
   }
   tabUpload.addEventListener("click", () => setTab("upload"));
   tabPaste.addEventListener("click", () => setTab("paste"));
+  tabUrl.addEventListener("click", () => setTab("url"));
 
   dropzone.addEventListener("click", () => fileInput.click());
   dropzone.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") fileInput.click(); });
@@ -1748,6 +2004,28 @@
     runPipeline(pasteText.value, "Pasted text");
   });
 
+  urlInput.addEventListener("input", () => {
+    analyzeUrlBtn.disabled = urlInput.value.trim().length < 4;
+  });
+  analyzeUrlBtn.addEventListener("click", () => handleUrl(urlInput.value));
+
+  async function handleUrl(rawUrl){
+    clearError();
+    let parsedForLabel;
+    try{ parsedForLabel = normalizeInputUrl(rawUrl); }
+    catch(err){ showError(err.message); return; }
+
+    showScreen("scanning");
+    cycleStatus(["Fetching page…", "Reading it as text…"]);
+    try{
+      const { text, hostname } = await fetchUrlText(rawUrl);
+      runPipeline(text, sanitizeLabel(hostname));
+    } catch(err){
+      showScreen("upload");
+      showError(err.message || "Couldn't fetch that page. Try pasting the text instead.");
+    }
+  }
+
   async function handleFile(file){
     clearError();
     if (file.size > 15 * 1024 * 1024){
@@ -1757,7 +2035,7 @@
     showScreen("scanning");
     cycleStatus(["Opening document…", "Extracting text…"]);
     try{
-      const text = await readFile(file);
+      const text = await readFile(file, cycleStatus);
       if (!text || text.trim().length < 40){
         throw new Error("Couldn't find enough readable text in that file. Try pasting the text instead.");
       }
@@ -2098,6 +2376,8 @@
   function resetToUpload(){
     pasteText.value = "";
     analyzePasteBtn.disabled = true;
+    urlInput.value = "";
+    analyzeUrlBtn.disabled = true;
     setTab("upload");
     clearError();
     renderDeviceCount();
