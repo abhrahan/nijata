@@ -156,20 +156,48 @@
                                 down which origins can supply
                                 script/style/font/connections, and
                                 block framing/plugins/base-uri
-                                rebinding.
-    A05 SSRF (client-side)  -> the URL field lets a user point this
-                                page at an arbitrary address, which
-                                the reader service (not this app)
-                                then fetches server-side. Because
-                                the result is only ever displayed
-                                back to and stored locally by the
-                                same user who typed the URL, there's
-                                no cross-user exfiltration path —
-                                but be aware this is a real, if low-
-                                severity, request-forgery surface if
-                                you embed this app somewhere with
-                                access to internal/intranet URLs a
-                                user shouldn't be able to reach.
+                                rebinding. script-src carries exact
+                                sha256 hashes for every inline
+                                <script> block (computed from this
+                                exact file) IN ADDITION TO
+                                'unsafe-inline' — per the CSP spec,
+                                any browser that understands hash
+                                sources ignores 'unsafe-inline' and
+                                enforces the hashes instead, so only
+                                these four exact, known script blocks
+                                may run; 'unsafe-inline' only remains
+                                as a fallback for the rare browser
+                                that doesn't support hash sources at
+                                all. IMPORTANT: if you edit ANY inline
+                                <script> block in this file (the three
+                                JSON-LD blocks or the main app script),
+                                you MUST recompute its hash and update
+                                it here, or that block will be silently
+                                blocked from running in modern browsers
+                                — recompute with:
+                                  python3 -c "import hashlib,base64,sys; print(base64.b64encode(hashlib.sha256(open(sys.argv[1],'rb').read()).digest()).decode())" <(printf '%s' "$SCRIPT_CONTENT")
+                                (hash the exact text between <script>
+                                and </script>, not the tags themselves).
+    A05 SSRF (server-side,   -> the URL field lets a user point this
+        via the relay)          page at an arbitrary address. The
+                                actual HTTP fetch of that address is
+                                performed server-side by r.jina.ai
+                                (not by the user's browser/network),
+                                so this is NOT a client-side/local-
+                                network SSRF risk to the user or to
+                                wherever this page is embedded — the
+                                relay's own infrastructure is what's
+                                exposed to whatever address is typed
+                                in, and reputable public readers like
+                                this one are expected to guard their
+                                own side against localhost/internal-
+                                IP targets. Our responsibility here is
+                                narrower: don't trust the relay's
+                                response uncritically. See
+                                fetchUrlText() for the request timeout
+                                and hard response-size cap that guard
+                                against a slow or oversized reply
+                                hanging or ballooning the tab.
     A06 Vulnerable/Outdated
         Components           -> pdf.js, mammoth, and tesseract.js
                                 are pinned to exact versions (not
@@ -215,7 +243,7 @@
 -->
 <meta http-equiv="Content-Security-Policy" content="
   default-src 'none';
-  script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net;
+  script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' 'sha256-WiIRo+dzKescVlvlk8WJf/78I3IGkbJCXc0cUBv2irg=' 'sha256-QqI8k4Hxl+vnz3vwPLmYMAY6ATVgnDSqxsjEICVBGqU=' 'sha256-SKDiel1wVDp0AtYiIxX3LlZw8BbKn97uMsqbvDGBvCc=' 'sha256-WXNxbEaaU0W2aO5D/SAhqlMuhrvG6b/Oj8kT4TNCRj0=' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net;
   worker-src 'self' blob: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net;
   style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
   font-src https://fonts.gstatic.com;
@@ -1695,12 +1723,30 @@
     for (let i = 1; i <= ocrPages; i++){
       if (onStatus) onStatus(["Running OCR on page " + i + " of " + ocrPages + "…"]);
       const page = await pdf.getPage(i);
-      const viewport = page.getViewport({ scale: 2 });
+      // A hostile PDF can declare an enormous page size; scaling that
+      // by 2x for OCR legibility could ask the browser to allocate a
+      // canvas large enough to hang or crash the tab (A04/A09). Clamp
+      // the rendered canvas to a sane maximum on its longest side,
+      // shrinking the effective scale instead of always using 2x.
+      const baseViewport = page.getViewport({ scale: 1 });
+      const longestSide = Math.max(baseViewport.width, baseViewport.height);
+      // No minimum floor here: for a page that declares an extreme size,
+      // the cap must win outright, however small a scale that implies —
+      // a floor would let a big enough declared page size exceed
+      // OCR_MAX_CANVAS_SIDE again and reintroduce the DoS this guards
+      // against. If width/height is ever 0 (malformed PDF), the ratio
+      // is Infinity and Math.min(2, Infinity) safely falls back to 2x.
+      const scale = Math.min(2, OCR_MAX_CANVAS_SIDE / longestSide);
+      const viewport = page.getViewport({ scale });
       const canvas = document.createElement("canvas");
       canvas.width = viewport.width;
       canvas.height = viewport.height;
       await page.render({ canvasContext: canvas.getContext("2d"), viewport }).promise;
       ocrText += (await ocrCanvas(canvas)) + " ";
+      // Help the backing store get reclaimed promptly rather than
+      // waiting on GC across a long loop of large canvases.
+      canvas.width = 0;
+      canvas.height = 0;
     }
     if (!ocrText.trim()) throw new Error("Couldn't find readable text in that PDF, even with OCR. Try pasting the text instead.");
     return ocrText;
@@ -1723,11 +1769,21 @@
      same trust model as the pdf.js/mammoth <script> tags above.
      ============================================================ */
   const OCR_MAX_PAGES = 15;
+  const OCR_MAX_CANVAS_SIDE = 3500; // px, longest side — bounds memory for a hostile/huge PDF page
+  const OCR_MAX_IMAGE_PIXELS = 40 * 1024 * 1024; // ~40MP — guards against decompression-bomb-style images (small file, huge decoded bitmap)
   // Major-version pin (not an exact patch, and not bare "@latest"):
   // tesseract.js's own docs recommend "@5" for the CDN tag, since an
   // invented exact patch version that doesn't exist would 404 and
   // silently break OCR entirely — worse than the small amount of
   // drift a major-version pin allows within the same stable API.
+  // NOTE ON SRI: this is intentionally NOT given a Subresource
+  // Integrity hash like the static pdf.js/mammoth tags above, because
+  // SRI requires hashing one exact, immutable file — incompatible with
+  // a floating major-version tag that can resolve to a different patch
+  // release over time. If you self-host this and want SRI here too,
+  // pin TESSERACT_VERSION to one exact release, compute the hash for
+  // that exact file, and accept the maintenance cost of updating both
+  // together whenever you bump the version.
   const TESSERACT_VERSION = "5";
   let tesseractLoadPromise = null;
   let ocrWorkerPromise = null;
@@ -1741,7 +1797,10 @@
       script.crossOrigin = "anonymous";
       script.referrerPolicy = "no-referrer";
       script.onload = () => resolve();
-      script.onerror = () => reject(new Error("OCR engine failed to load. Check your connection, or paste the text instead."));
+      script.onerror = () => {
+        tesseractLoadPromise = null; // don't cache a permanent failure — let the next attempt retry
+        reject(new Error("OCR engine failed to load. Check your connection, or paste the text instead."));
+      };
       document.head.appendChild(script);
     });
     return tesseractLoadPromise;
@@ -1757,12 +1816,38 @@
         // (see CSP comment above), and hand-pinning each sub-path risks
         // guessing a URL that doesn't exist and breaking OCR outright.
         return await Tesseract.createWorker("eng");
-      })();
+      })().catch(err => {
+        ocrWorkerPromise = null; // don't cache a permanent failure — let the next attempt retry
+        throw err;
+      });
     }
     return ocrWorkerPromise;
   }
 
+  // Decodes just enough of an image to check its pixel dimensions
+  // before handing it to OCR — a small, highly-compressed file can
+  // still decode to an enormous bitmap ("decompression bomb"), which
+  // would otherwise force the browser to allocate a huge amount of
+  // memory inside the OCR engine (A04/A09 resource-exhaustion).
+  async function assertSaneImageSize(file){
+    if (!window.createImageBitmap){
+      return; // best-effort: skip the check on browsers without it, rather than failing outright
+    }
+    let bitmap;
+    try{
+      bitmap = await createImageBitmap(file);
+    } catch(e){
+      throw new Error("Couldn't read that image file. It may be corrupted — try a different file, or paste the text instead.");
+    }
+    const pixels = bitmap.width * bitmap.height;
+    bitmap.close();
+    if (pixels > OCR_MAX_IMAGE_PIXELS){
+      throw new Error("That image is too large to OCR (over 40 megapixels). Try a smaller image, or paste the text instead.");
+    }
+  }
+
   async function ocrImage(file){
+    await assertSaneImageSize(file);
     const worker = await getOcrWorker();
     const { data } = await worker.recognize(file);
     if (!data || !data.text || !data.text.trim()){
@@ -1791,6 +1876,8 @@
      service; file uploads, pasted text, and OCR never do.
      ============================================================ */
   const URL_FETCH_MAX_CHARS = 400000; // same order as MAX_ANALYZE_CHARS below
+  const URL_FETCH_MAX_BYTES = 5 * 1024 * 1024; // hard cap on the relay's response, read via stream (see below) rather than trusting it to be small
+  const URL_FETCH_TIMEOUT_MS = 25000;
 
   function normalizeInputUrl(raw){
     let value = String(raw || "").trim();
@@ -1805,23 +1892,63 @@
     return parsed;
   }
 
+  // Reads a Response body up to a hard byte cap, without ever buffering
+  // more than that in memory — a plain `res.text()` would happily try
+  // to materialize an entire multi-gigabyte reply before we got the
+  // chance to truncate it (A04/A09 resource-exhaustion hardening,
+  // consistent with the file-size/page-count/char caps used elsewhere).
+  async function readBodyCapped(res, maxBytes){
+    if (!res.body || !res.body.getReader){
+      // Very old browsers without streams support: fall back to the
+      // simple path rather than failing outright.
+      const full = await res.text();
+      return full.length > maxBytes ? full.slice(0, maxBytes) : full;
+    }
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder("utf-8");
+    let received = 0;
+    let out = "";
+    while (true){
+      const { done, value } = await reader.read();
+      if (done) break;
+      received += value.length;
+      if (received > maxBytes){
+        const allowed = value.length - (received - maxBytes);
+        if (allowed > 0) out += decoder.decode(value.subarray(0, allowed), { stream: false });
+        try{ await reader.cancel(); } catch(e){ /* best-effort */ }
+        break;
+      }
+      out += decoder.decode(value, { stream: true });
+    }
+    out += decoder.decode(); // flush any pending multi-byte sequence
+    return out;
+  }
+
   async function fetchUrlText(rawUrl){
     const parsed = normalizeInputUrl(rawUrl);
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), URL_FETCH_TIMEOUT_MS);
     let res;
     try{
       res = await fetch("https://r.jina.ai/" + parsed.href, {
         method: "GET",
         mode: "cors",
         credentials: "omit",
-        referrerPolicy: "no-referrer"
+        referrerPolicy: "no-referrer",
+        signal: controller.signal
       });
     } catch(e){
+      if (e.name === "AbortError"){
+        throw new Error("That page took too long to respond. Try again, or paste the text instead.");
+      }
       throw new Error("Couldn't reach that page. This can happen if the site blocks automated fetches, the URL is wrong, or you're offline — try pasting the text instead.");
+    } finally {
+      clearTimeout(timeoutId);
     }
     if (!res.ok){
       throw new Error("That page came back with an error (HTTP " + res.status + "). Double-check the URL, or paste the text instead.");
     }
-    let text = await res.text();
+    let text = await readBodyCapped(res, URL_FETCH_MAX_BYTES);
     if (text.length > URL_FETCH_MAX_CHARS) text = text.slice(0, URL_FETCH_MAX_CHARS);
     // Light cleanup of the reader service's markdown-ish output —
     // doesn't need to be perfect, splitSentences()/analyze() only need
@@ -2021,6 +2148,7 @@
       const { text, hostname } = await fetchUrlText(rawUrl);
       runPipeline(text, sanitizeLabel(hostname));
     } catch(err){
+      clearInterval(statusTimer);
       showScreen("upload");
       showError(err.message || "Couldn't fetch that page. Try pasting the text instead.");
     }
@@ -2041,6 +2169,7 @@
       }
       runPipeline(text, sanitizeLabel(file.name));
     } catch(err){
+      clearInterval(statusTimer);
       showScreen("upload");
       showError(err.message || "Something went wrong reading that file. Try pasting the text instead.");
     }
@@ -2103,8 +2232,11 @@
     // Defensive shape check — history is user-editable via devtools/localStorage,
     // and the format may change in future versions, so a malformed or tampered
     // entry is dropped rather than trusted, instead of crashing the dashboard
-    // or the report renderer that consumes it.
-    return !!(e && typeof e === "object" &&
+    // or the report renderer that consumes it. Checks the sub-shape of each
+    // catResults/flagHits element too, not just that the arrays exist —
+    // renderReport()/buildGist() dereference .label/.icon/.phrases/.evidence
+    // and .phrase on those directly.
+    if (!(e && typeof e === "object" &&
       e.v === HISTORY_SCHEMA_VERSION &&
       typeof e.id === "string" &&
       typeof e.label === "string" &&
@@ -2114,7 +2246,17 @@
       typeof e.result.risk === "string" &&
       typeof e.result.riskScore === "number" &&
       Array.isArray(e.result.catResults) &&
-      Array.isArray(e.result.flagHits));
+      Array.isArray(e.result.flagHits))){
+      return false;
+    }
+    const catsOk = e.result.catResults.every(c => c && typeof c === "object" &&
+      typeof c.key === "string" && typeof c.label === "string" &&
+      typeof c.found === "boolean" && Array.isArray(c.phrases) &&
+      (c.evidence === null || c.evidence === undefined || typeof c.evidence === "string"));
+    const flagsOk = e.result.flagHits.every(f => f && typeof f === "object" &&
+      typeof f.phrase === "string" &&
+      (f.evidence === null || f.evidence === undefined || typeof f.evidence === "string"));
+    return catsOk && flagsOk;
   }
   function loadHistory(){
     try{
