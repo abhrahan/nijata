@@ -254,7 +254,7 @@
   form-action 'none';
 ">
 <meta name="referrer" content="no-referrer">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0%25' y1='0%25' x2='100%25' y2='100%25'%3E%3Cstop offset='0%25' stop-color='%234DD2FF'/%3E%3Cstop offset='55%25' stop-color='%23B98AFF'/%3E%3Cstop offset='100%25' stop-color='%23FF6FA0'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='100' height='100' rx='24' fill='%230B0A16'/%3E%3Ccircle cx='41' cy='41' r='25' fill='none' stroke='url(%23g)' stroke-width='12.5'/%3E%3Cline x1='58.7' y1='58.7' x2='83' y2='83' stroke='url(%23g)' stroke-width='13.5' stroke-linecap='round'/%3E%3Cpath d='M72 9 L75.4 17.2 L83.6 20.6 L75.4 24 L72 32.2 L68.6 24 L60.4 20.6 L68.6 17.2 Z' fill='%23FF6FA0'/%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><defs><linearGradient id='g' x1='0%25' y1='0%25' x2='100%25' y2='100%25'><stop offset='0%25' stop-color='%234DD2FF'/><stop offset='55%25' stop-color='%23B98AFF'/><stop offset='100%25' stop-color='%23FF6FA0'/></linearGradient></defs><rect width='100' height='100' rx='28' fill='url%28%23g%29'/><path d='M35.0 72.5 V36.2 M35.0 49.4 C35.0 38.8 42.5 33.1 50.9 33.1 C59.7 33.1 65.3 39.4 65.3 49.7 V72.5' fill='none' stroke='%230B0A16' stroke-width='10.0' stroke-linecap='round' stroke-linejoin='round'/></svg>">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" crossorigin="anonymous" referrerpolicy="no-referrer">
@@ -359,9 +359,26 @@
     width:32px; height:32px;
     flex-shrink:0;
     display:block;
-    filter: drop-shadow(0 2px 8px rgba(52,228,161,0.35));
+    filter: drop-shadow(0 2px 8px rgba(185,138,255,0.35));
   }
-  .brand-name{ font-weight:600; font-size:17px; letter-spacing:-0.01em; }
+  /* Wordmark: the brand name itself is the logo, set in the same
+     blue→violet→pink gradient as the monogram tile beside it. The
+     background-clip:text trick needs a transparent fill, with a solid
+     colour fallback for the rare engine that doesn't support it. */
+  .brand-name{
+    font-weight:700;
+    font-size:19px;
+    letter-spacing:-0.02em;
+    color:var(--text);
+  }
+  @supports (-webkit-background-clip: text) or (background-clip: text){
+    .brand-name{
+      background:linear-gradient(100deg, #4DD2FF, #B98AFF 55%, #FF6FA0 100%);
+      -webkit-background-clip:text;
+      background-clip:text;
+      color:transparent;
+    }
+  }
   .badge{
     display:flex; align-items:center; gap:5px;
     font-family:var(--font-mono);
@@ -1034,11 +1051,11 @@
             <stop offset="100%" stop-color="#FF6FA0"/>
           </linearGradient>
         </defs>
-        <circle cx="13" cy="13" r="8" fill="none" stroke="url(#nijataGrad)" stroke-width="4"/>
-        <line x1="18.7" y1="18.7" x2="27" y2="27" stroke="url(#nijataGrad)" stroke-width="4.4" stroke-linecap="round"/>
-        <path d="M23 3 L24.4 5.6 L27 7 L24.4 8.4 L23 11 L21.6 8.4 L19 7 L21.6 5.6 Z" fill="#FF6FA0"/>
+        <rect x="1" y="1" width="30" height="30" rx="9" fill="url(#nijataGrad)"/>
+        <path d="M11.2 23.2 V11.6 M11.2 15.8 C11.2 12.4 13.6 10.6 16.3 10.6 C19.1 10.6 20.9 12.6 20.9 15.9 V23.2"
+              fill="none" stroke="#0B0A16" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/>
       </svg>
-      <div class="brand-name">Nijata</div>
+      <div class="brand-name">nijata</div>
     </div>
     <div class="topbar-right">
       <button class="icon-btn" id="dashboard-btn" aria-label="Your scan history">
